@@ -1,7 +1,8 @@
 #include "vga.h"
+#include "../mm/vmm.h"
 #include<stdint.h>
 
-#define VGA_MEM ((volatile uint16_t*)0xB8000)
+#define VGA_MEM ((volatile uint16_t*)(0xB8000 + HHDM_OFFSET))
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
 

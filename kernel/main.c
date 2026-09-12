@@ -10,6 +10,7 @@
 #include "mm/heap.h"
 #include "sched/sched.h"
 #include "user/elf.h"
+#include "syscall/syscall.h"
 
 void irq_install(void);
 
@@ -118,7 +119,7 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     vmm_init();
 
     vga_clear();
-    vga_print_at("Hello World! I am Dominic Andrew, creator of RevolOS!", 0, 0);
+    vga_print_at("Hello World! I am Dominic Andrew, creator of RevinixOS!", 0, 0);
     kprintf("VGA: printed hello world to screen. \n");
 
     heap_init();

@@ -1,10 +1,10 @@
 #include "pmm.h"
 #include "../kprintf.h"
-#include<stdint.h>
-#include<stddef.h>
+#include <stdint.h>
+#include <stddef.h>
 
-//provided by the linker script: address just past the kernel image
-extern char kernel_end[];
+//provided by the linker script: physical end of the kernel image
+extern char kernel_phys_end[];
 
 // multiboot2 structures we need
 struct __attribute__((packed)) mb2_tag {
@@ -90,17 +90,18 @@ void pmm_init(uint64_t mb2_info) {
     bitmap_size  = (total_frames + 7) / 8;
 
     // place the bitmap right after the kernel (frame-aligned).
-    // NOTE: assumes GRUB placed the mb2 info struct in low memory, not here.
+    // NOTE assumes GRUB placed the mb2 info struct in low memory, not here.
     // On QEMU/GRUB this holds; worth revisiting for real-hardware bring-up.
-    
     // The mb2 info struct sits somewhere in low memory (often right after the
     // kernel). Make sure the bitmap starts past BOTH the kernel and that struct,
     // or filling the bitmap would clobber the memory map we still need to read.
+    // kernel_phys_end already accounts for the high VMA offset (linker-computed),
+    // so this stays a plain physical address.
 
     uint64_t mb2_start = mb2_info;
     uint64_t mb2_end   = mb2_info + total_size;   // total_size = *(uint32_t*)mb2_info
 
-    uint64_t bitmap_start = ALIGN_UP((uint64_t)kernel_end, FRAME_SIZE);
+    uint64_t bitmap_start = ALIGN_UP((uint64_t)kernel_phys_end, FRAME_SIZE);
     if (mb2_end > bitmap_start && mb2_start < bitmap_start + bitmap_size) {
         // overlap: push the bitmap to just past the mb2 info struct
         bitmap_start = ALIGN_UP(mb2_end, FRAME_SIZE);
@@ -111,14 +112,9 @@ void pmm_init(uint64_t mb2_info) {
     for (uint64_t i = 0; i < bitmap_size; i++) bitmap[i] = 0xFF;
     used_frames = total_frames;
 
-    // kprintf("PMM DEBUG: entry_size=%d, mmap size=%d\n",
-    //        (int)entry_size, (int)mmap->size);
-
     // pass 2: free the frames inside each available region
     for (uint8_t* e = entries; e < mmap_end; e += entry_size) {
         struct mb2_mmap_entry* m = (struct mb2_mmap_entry*)e;
-        // kprintf("PMM DEBUG: region base=%p len=%p type=%d\n",
-        //        (void*)m->base_addr, (void*)m->length, (int)m->type);
         if (m->type != 1) continue;
         uint64_t start      = ALIGN_UP(m->base_addr, FRAME_SIZE);
         uint64_t region_end = m->base_addr + m->length;
@@ -134,12 +130,6 @@ void pmm_init(uint64_t mb2_info) {
     uint64_t reserve_end = ALIGN_UP((uint64_t)bitmap + bitmap_size, FRAME_SIZE);
     for (uint64_t a = 0; a < reserve_end; a += FRAME_SIZE)
         mark_used(a / FRAME_SIZE);
-
-    // kprintf("PMM DEBUG: kernel_end=%p\n", (void*)kernel_end);
-    // kprintf("PMM DEBUG: bitmap=%p, bitmap_size=%d bytes\n",
-    //         (void*)bitmap, (int)bitmap_size);
-    // kprintf("PMM DEBUG: reserve_end=%p (frame %d of %d)\n",
-    //         (void*)reserve_end, (int)(reserve_end / FRAME_SIZE), (int)total_frames);
 
     kprintf("PMM: %d MB usable, %d frames total, %d free\n",
             (int)(max_addr / (1024 * 1024)),

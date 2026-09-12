@@ -12,6 +12,9 @@
 // A page-table entry stores the next table's physical address in bits 51:12.
 #define ENTRY_ADDR(e) ((e) & 0x000FFFFFFFFFF000ull)
 
+// Physical end of the kernel image, provided by the linker script.
+extern char kernel_phys_end[];
+
 static uint64_t pml4_phys;   // physical address of our top-level table
 static int vmm_active = 0;   // 0 = access tables via identity map, 1 = via HHDM
 
@@ -56,23 +59,34 @@ void vmm_init(void) {
 
     const uint64_t TWO_MB = 0x200000ull;
 
-    // 1) Identity-map the first 4 GB so the kernel, its stack, VGA, and low
-    //    MMIO keep working the instant we load the new CR3.
+    // 1) Identity-map the first 4 GB so the kernel's boot stack (.boot.bss),
+    //    VGA, MMIO, and low RAM keep working immediately after the CR3 switch.
     for (uint64_t a = 0; a < 0x100000000ull; a += TWO_MB)
         map_huge(a, a, PAGE_PRESENT | PAGE_WRITABLE);
 
-    // 2) HHDM: map all physical RAM at HHDM_OFFSET.
+    // 2) Map the kernel's higher-half home. The kernel starts at physical
+    //    KERNEL_PHYS_BASE (1 MB, NOT 2 MB aligned), so these must be 4 KB
+    //    pages, not huge pages. This MUST exist before CR3 switches, or the
+    //    kernel's own instructions/data are unmapped the instant CR3 loads.
+    uint64_t ksize = (uint64_t)kernel_phys_end - KERNEL_PHYS_BASE;
+    for (uint64_t off = 0; off < ksize; off += 0x1000)
+        vmm_map_page(KERNEL_VIRT_BASE + off,
+                     KERNEL_PHYS_BASE + off,
+                     PAGE_PRESENT | PAGE_WRITABLE);
+
+    // 3) HHDM: map all physical RAM at HHDM_OFFSET.
     uint64_t max_phys = pmm_total_frames() * 4096ull;
     max_phys = (max_phys + TWO_MB - 1) & ~(TWO_MB - 1);   // round up to 2 MB
     for (uint64_t a = 0; a < max_phys; a += TWO_MB)
         map_huge(HHDM_OFFSET + a, a, PAGE_PRESENT | PAGE_WRITABLE);
 
-    // 3) Switch to our tables, then start using the HHDM for table access.
+    // 4) Switch to our tables, then start using the HHDM for table access.
     __asm__ volatile ("mov %0, %%cr3" : : "r"(pml4_phys) : "memory");
     vmm_active = 1;
 
-    kprintf("VMM: paging active. PML4 phys=%p, HHDM base=%p, RAM mapped=%d MB\n",
-            (void*)pml4_phys, (void*)HHDM_OFFSET, (int)(max_phys / (1024*1024)));
+    kprintf("VMM: paging active. PML4 phys=%p, HHDM base=%p, RAM mapped=%d MB, kernel high=%p\n",
+            (void*)pml4_phys, (void*)HHDM_OFFSET, (int)(max_phys / (1024*1024)),
+            (void*)KERNEL_VIRT_BASE);
 }
 
 // Map a single 4 KB page. Do NOT use this inside the identity 0-4GB range

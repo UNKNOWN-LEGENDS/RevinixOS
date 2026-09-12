@@ -10,6 +10,10 @@
 
 //all physical RAM is mapped starting here (canonical higher half)
 #define HHDM_OFFSET 0xFFFF800000000000ull
+#define KERNEL_VMA 0xFFFFFFFF80000000ull
+
+#define KERNEL_VIRT_BASE 0xFFFFFFFF80000000ull
+#define KERNEL_PHYS_BASE 0x100000ull
 
 void vmm_init(void);
 void vmm_map_page(uint64_t virt, uint64_t phys, uint64_t flags);
