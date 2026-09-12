@@ -149,4 +149,4 @@ Developed as a university project (Project Work Phase 1) under faculty guidance,
 
 ## License
 
-*(Add a license here — MIT/GPL/BSD, whichever fits your intentions for the project.)*
+*No Valid License adopted yet. Will update it very soon - Creator, UNKNOWN-LEGENDS*
