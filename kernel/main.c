@@ -96,7 +96,7 @@ static void usermode_test(void) {
             (void*)proc, (void*)vmm_kernel_pml4());
 
     // 2) load the program INTO the process space (writes go via HHDM, so the
-    //    space doesn't need to be active yet)
+    //    space need not be active yet)
     uint64_t entry = elf_load(proc, hello_elf_start, elf_size);
     if (!entry) { kprintf("ELF load failed.\n"); return; }
 
@@ -108,6 +108,12 @@ static void usermode_test(void) {
     // 4) become the process address space, then drop to Ring 3 inside it
     vmm_switch_address_space(proc);
     kprintf("Switched to process address space. Entering Ring 3...\n");
+
+    // PROOF: allocate + free a frame while a process (no entry-0 identity map)
+    // is the active address space. Pre-fix this faults; post-fix it works.
+    uint64_t probe = pmm_alloc_frame();
+    kprintf("[PMM/HHDM] alloc while process active: frame=%p\n", (void*)probe);
+    pmm_free_frame(probe);
 
     jump_usermode(entry, user_stack_top);
 }
@@ -127,6 +133,7 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
 
     pmm_init(mb2_info);
     vmm_init();
+    pmm_use_hhdm();
 
     vga_clear();
     vga_print_at("Hello World! I am Dominic Andrew, creator of RevinixOS!", 0, 0);

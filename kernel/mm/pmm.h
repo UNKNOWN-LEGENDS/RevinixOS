@@ -10,5 +10,6 @@ uint64_t pmm_alloc_frame(void);         //returns physical addr, or 0 if OOM
 void pmm_free_frame(uint64_t addr);
 uint64_t pmm_total_frames(void);
 uint64_t pmm_used_frames(void);
+void pmm_use_hhdm(void);
 
 #endif

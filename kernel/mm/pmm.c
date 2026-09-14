@@ -2,6 +2,7 @@
 #include "../kprintf.h"
 #include <stdint.h>
 #include <stddef.h>
+#include "vmm.h"
 
 //provided by the linker script: physical end of the kernel image
 extern char kernel_phys_end[];
@@ -29,6 +30,7 @@ struct __attribute__((packed)) mb2_mmap_entry {
 
 // ---- allocator state ----
 static uint8_t* bitmap;
+static uint64_t bitmap_phys;
 static uint64_t total_frames;
 static uint64_t used_frames;
 static uint64_t bitmap_size;   // in bytes
@@ -135,6 +137,10 @@ void pmm_init(uint64_t mb2_info) {
             (int)(max_addr / (1024 * 1024)),
             (int)total_frames,
             (int)(total_frames - used_frames));
+}
+
+void pmm_use_hhdm(void) {
+    bitmap = (uint8_t*)phys_to_virt(bitmap_phys);
 }
 
 uint64_t pmm_alloc_frame(void) {
