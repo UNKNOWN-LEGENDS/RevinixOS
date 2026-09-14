@@ -30,6 +30,13 @@ stack_bottom:
     resb 16384          ; 16 KB boot stack
 stack_top:
 
+; ---------- Higher-half kernel stack (.bss -> kernel space, PML4[511]) ----------
+section .bss
+align 16
+kstack_bottom:
+    resb 16384          ; 16 KB stack that kmain runs on
+kstack_top:
+
 ; ---------- Early GDT (low-mapped) ----------
 section .boot.rodata progbits alloc noexec nowrite align=8
 gdt64:
@@ -166,6 +173,10 @@ section .text
 bits 64
 higher_half_entry:
     ; rdi/rsi (mb2 magic/info) preserved across the hop
+
+    ;Switch to a higher-half kernel stack
+    mov rsp, kstack_top
+
     call kmain
 
     cli

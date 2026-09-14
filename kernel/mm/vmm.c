@@ -15,7 +15,7 @@
 // Physical end of the kernel image, provided by the linker script.
 extern char kernel_phys_end[];
 
-static uint64_t pml4_phys;   // physical address of our top-level table
+static uint64_t kernel_pml4;   // physical address of our top-level table
 static int vmm_active = 0;   // 0 = access tables via identity map, 1 = via HHDM
 
 // Get a writable pointer to a page-table frame.
@@ -47,15 +47,15 @@ static uint64_t next_level(uint64_t table_phys, int index, int create) {
 
 // Map one 2 MB huge page (used only during init for the identity + HHDM regions).
 static void map_huge(uint64_t virt, uint64_t phys, uint64_t flags) {
-    uint64_t pdpt = next_level(pml4_phys, PML4_INDEX(virt), 1);
+    uint64_t pdpt = next_level(kernel_pml4, PML4_INDEX(virt), 1);
     uint64_t pd   = next_level(pdpt, PDPT_INDEX(virt), 1);
     uint64_t* pd_t = table(pd);
     pd_t[PD_INDEX(virt)] = phys | flags | PAGE_HUGE;
 }
 
 void vmm_init(void) {
-    pml4_phys = pmm_alloc_frame();
-    zero_table(pml4_phys);
+    kernel_pml4 = pmm_alloc_frame();
+    zero_table(kernel_pml4);
 
     const uint64_t TWO_MB = 0x200000ull;
 
@@ -81,53 +81,76 @@ void vmm_init(void) {
         map_huge(HHDM_OFFSET + a, a, PAGE_PRESENT | PAGE_WRITABLE);
 
     // 4) Switch to our tables, then start using the HHDM for table access.
-    __asm__ volatile ("mov %0, %%cr3" : : "r"(pml4_phys) : "memory");
+    __asm__ volatile ("mov %0, %%cr3" : : "r"(kernel_pml4) : "memory");
     vmm_active = 1;
 
     kprintf("VMM: paging active. PML4 phys=%p, HHDM base=%p, RAM mapped=%d MB, kernel high=%p\n",
-            (void*)pml4_phys, (void*)HHDM_OFFSET, (int)(max_phys / (1024*1024)),
+            (void*)kernel_pml4, (void*)HHDM_OFFSET, (int)(max_phys / (1024*1024)),
             (void*)KERNEL_VIRT_BASE);
 }
 
 // Map a single 4 KB page. Do NOT use this inside the identity 0-4GB range
 // (those are huge pages; walking into them as tables would misbehave).
-void vmm_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {
-    uint64_t pdpt = next_level(pml4_phys, PML4_INDEX(virt), 1);
-    uint64_t pd   = next_level(pdpt, PDPT_INDEX(virt), 1);
-    uint64_t pt   = next_level(pd, PD_INDEX(virt), 1);
+
+void vmm_map_page_in(uint64_t pml4, uint64_t virt, uint64_t phys, uint64_t flags) {
+    uint64_t pdpt = next_level(pml4, PML4_INDEX(virt), 1);
+    uint64_t pd = next_level(pdpt, PDPT_INDEX(virt), 1);
+    uint64_t pt = next_level(pd, PD_INDEX(virt), 1);
     uint64_t* pt_t = table(pt);
     pt_t[PT_INDEX(virt)] = (phys & ~0xFFFull) | flags | PAGE_PRESENT;
     __asm__ volatile ("invlpg (%0)" : : "r"(virt) : "memory");
 }
+void vmm_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {
+    vmm_map_page_in(kernel_pml4, virt, phys, flags);
+}
 
-void vmm_unmap_page(uint64_t virt) {
-    uint64_t pdpt = next_level(pml4_phys, PML4_INDEX(virt), 0);
+void vmm_unmap_page_in(uint64_t pml4, uint64_t virt) {
+    uint64_t pdpt = next_level(pml4, PML4_INDEX(virt), 0);
     if (!pdpt) return;
     uint64_t pd = next_level(pdpt, PDPT_INDEX(virt), 0);
     if (!pd) return;
     uint64_t pt = next_level(pd, PD_INDEX(virt), 0);
     if (!pt) return;
-    uint64_t* pt_t = table(pt);
-    pt_t[PT_INDEX(virt)] = 0;
+    table(pt)[PT_INDEX(virt)] = 0;
     __asm__ volatile ("invlpg (%0)" : : "r"(virt) : "memory");
 }
 
-uint64_t vmm_get_phys(uint64_t virt) {
-    uint64_t pdpt = next_level(pml4_phys, PML4_INDEX(virt), 0);
-    if (!pdpt) return 0;
-    uint64_t pde = table(pdpt)[PDPT_INDEX(virt)];  // reuse var name loosely below
-    (void)pde;
+void vmm_unmap_page(uint64_t virt) {
+    vmm_unmap_page_in(kernel_pml4, virt);
+}
 
+uint64_t vmm_get_phys_in(uint64_t pml4, uint64_t virt) {
+    uint64_t pdpt = next_level(pml4, PML4_INDEX(virt), 0);
+    if (!pdpt) return 0;
     uint64_t pd = next_level(pdpt, PDPT_INDEX(virt), 0);
     if (!pd) return 0;
-
     uint64_t pd_entry = table(pd)[PD_INDEX(virt)];
     if (!(pd_entry & PAGE_PRESENT)) return 0;
-    if (pd_entry & PAGE_HUGE)                       // 2 MB page
+    if (pd_entry & PAGE_HUGE)
         return ENTRY_ADDR(pd_entry) + (virt & 0x1FFFFF);
-
     uint64_t pt = ENTRY_ADDR(pd_entry);
     uint64_t pt_entry = table(pt)[PT_INDEX(virt)];
     if (!(pt_entry & PAGE_PRESENT)) return 0;
     return ENTRY_ADDR(pt_entry) + (virt & 0xFFF);
+}
+
+uint64_t vmm_get_phys(uint64_t virt) { return vmm_get_phys_in(kernel_pml4, virt); }
+
+uint64_t vmm_kernel_pml4(void) { return kernel_pml4; }
+
+// New address space: user half (0-255) empty, kernel half (256-511) shared BY
+// REFERENCE from the template, so all kernel mappings — and any future ones,
+// which live under these same top-level entries — are visible from every space.
+uint64_t vmm_create_address_space(void) {
+    uint64_t new_pml4 = pmm_alloc_frame();
+    zero_table(new_pml4);
+    uint64_t* dst = table(new_pml4);
+    uint64_t* src = table(kernel_pml4);
+    for (int i = 256; i < 512; i++)
+        dst[i] = src[i];
+    return new_pml4;
+}
+
+void vmm_switch_address_space(uint64_t pml4_phys) {
+    __asm__ volatile ("mov %0, %%cr3" : : "r"(pml4_phys) : "memory");
 }

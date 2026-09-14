@@ -90,23 +90,33 @@ static void usermode_test(void) {
     uint64_t elf_size = (uint64_t)(hello_elf_end - hello_elf_start);
     kprintf("Loading embedded ELF (%d bytes)...\n", (int)elf_size);
 
-    uint64_t entry = elf_load(hello_elf_start, elf_size);
-    if (!entry) {
-        kprintf("ELF load failed.\n");
-        return;
-    }
+    // 1) fresh address space: empty user half, shared kernel half
+    uint64_t proc = vmm_create_address_space();
+    kprintf("Created process address space: PML4 phys=%p (kernel PML4=%p)\n",
+            (void*)proc, (void*)vmm_kernel_pml4());
 
-    // user stack (unchanged)
+    // 2) load the program INTO the process space (writes go via HHDM, so the
+    //    space doesn't need to be active yet)
+    uint64_t entry = elf_load(proc, hello_elf_start, elf_size);
+    if (!entry) { kprintf("ELF load failed.\n"); return; }
+
+    // 3) user stack, mapped in the process space
     uint64_t stack_frame = pmm_alloc_frame();
-    vmm_map_page(USER_STACK_VADDR, stack_frame, PAGE_WRITABLE | PAGE_USER);
+    vmm_map_page_in(proc, USER_STACK_VADDR, stack_frame, PAGE_WRITABLE | PAGE_USER);
     uint64_t user_stack_top = USER_STACK_VADDR + 4096;
 
-    kprintf("Jumping to ELF entry point in Ring 3...\n");
+    // 4) become the process address space, then drop to Ring 3 inside it
+    vmm_switch_address_space(proc);
+    kprintf("Switched to process address space. Entering Ring 3...\n");
+
     jump_usermode(entry, user_stack_top);
 }
 
 void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     serial_init();
+    uint64_t rsp;
+    __asm__ volatile ("mov %%rsp, %0" : "=r"(rsp));
+    kprintf("[STACK] kmain rsp=%p\n", (void*)rsp);
     kprintf("Kernel booted in 64-bit long mode.\n");
 
     gdt_init(); gdt_debug();     kprintf("GDT loaded.\n");

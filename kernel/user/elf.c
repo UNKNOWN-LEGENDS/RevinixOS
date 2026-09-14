@@ -10,18 +10,18 @@
 
 // Map a user page if not already mapped; return its HHDM-accessible pointer
 // so the kernel can write into it.
-static uint8_t* ensure_user_page(uint64_t vaddr) {
+static uint8_t* ensure_user_page(uint64_t pml4, uint64_t vaddr) {
     uint64_t page = ALIGN_DOWN(vaddr, PAGE_SIZE);
-    uint64_t phys = vmm_get_phys(page);
+    uint64_t phys = vmm_get_phys_in(pml4, page);
     if (!phys) {
         phys = pmm_alloc_frame();
-        vmm_map_page(page, phys, PAGE_WRITABLE | PAGE_USER);
+        vmm_map_page_in(pml4, page, phys, PAGE_WRITABLE | PAGE_USER);
     }
     // reach the physical frame through the HHDM to write into it
     return (uint8_t*)phys_to_virt(phys);
 }
 
-uint64_t elf_load(const uint8_t* image, uint64_t image_size) {
+uint64_t elf_load(uint64_t pml4, const uint8_t* image, uint64_t image_size) {
     if (image_size < sizeof(struct elf64_ehdr)) {
         kprintf("ELF: image too small\n");
         return 0;
@@ -66,7 +66,7 @@ uint64_t elf_load(const uint8_t* image, uint64_t image_size) {
         // copy filesz bytes from the image into user pages, byte by byte,
         // mapping pages on demand. (Simple and correct; optimize later.)
         for (uint64_t b = 0; b < memsz; b++) {
-            uint8_t* dst_page = ensure_user_page(vaddr + b);
+            uint8_t* dst_page = ensure_user_page(pml4, vaddr + b);
             uint64_t page_off = (vaddr + b) & (PAGE_SIZE - 1);
             // bytes beyond filesz are zero (handles .bss)
             dst_page[page_off] = (b < filesz) ? image[off + b] : 0;

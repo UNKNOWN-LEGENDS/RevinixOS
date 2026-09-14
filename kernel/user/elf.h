@@ -41,6 +41,6 @@ struct elf64_phdr {
 
 //load an ELF64 image (pointed to in kernel memory) into user pages
 //returns the entry-point vritual address, or 0 on failure
-uint64_t elf_load(const uint8_t* image, uint64_t image_size);
+uint64_t elf_load(uint64_t pml4, const uint8_t* image, uint64_t image_size);
 
 #endif
