@@ -6,7 +6,8 @@ enum task_state { TASK_READY, TASK_RUNNING, TASK_DONE };
 
 struct task {
     uint64_t rsp;               //saved stack pointer (must be first field)
-    void* stack_base;           //heap allocation, for freeing later
+    void* stack_base;
+    uint64_t pml4;           //heap allocation, for freeing later
     int id;
     enum task_state state;
     struct task* next;          //circular run queue

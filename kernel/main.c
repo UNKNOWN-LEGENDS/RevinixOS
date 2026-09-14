@@ -14,21 +14,22 @@
 
 void irq_install(void);
 
-// static void task_a(void) {
-//     int count=0;
-//     for (;;) {
-//         kprintf("   [Task A] count=%d\n", count++);
-//         for (volatile int d=0; d<5000000; d++);         //burn time, NO yield
-//     }
-// }
-
-// static void task_b(void) {
-//     int count=0;
-//     for (;;) {
-//         kprintf("   [Task B] count=%d\n", count++);
-//         for (volatile int d=0; d<5000000; d++);         //burn time, NO yield
-//     }
-// }
+static void task_a(void) {
+    int count = 0;
+    for (;;) {
+        uint64_t cr3; __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
+        kprintf("   [Task A] count=%d cr3=%p\n", count++, (void*)cr3);
+        for (volatile int d = 0; d < 20000000; d++);   // burn time, no yield
+    }
+}
+static void task_b(void) {
+    int count = 0;
+    for (;;) {
+        uint64_t cr3; __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
+        kprintf("   [Task B] count=%d cr3=%p\n", count++, (void*)cr3);
+        for (volatile int d = 0; d < 20000000; d++);
+    }
+}
 
 extern void jump_usermode(uint64_t entry, uint64_t user_stack);
 
@@ -149,7 +150,11 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     // kprintf("Created tasks: A id=%d, B id=%d\n", ta->id, tb->id);
     // kprintf("Starting PREEMPTIVE scheduler (no yields)...\n");
     kprintf("Testing Ring 3 transition...\n");
-    usermode_test();
+    kprintf("Creating two kernel tasks in separate address space...\n");
+    struct task* ta = task_create(task_a);
+    struct task* tb = task_create(task_b);
+    kprintf("Task A id=%d pml4=%p | Task B id=%d pml4=%p | kernel pml4=%p\n", ta->id, (void*)tb->pml4, (void*)vmm_kernel_pml4());
+    kprintf("Starting preemptive scheduler (CR3 swaps per task)...\n");
     //unreachable
 
     __asm__ volatile ("sti");               //ake sure interrupts are on

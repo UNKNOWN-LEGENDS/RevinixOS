@@ -2,6 +2,7 @@
 #include "../mm/heap.h"
 #include "../kprintf.h"
 #include <stdint.h>
+#include "../mm/vmm.h"
 
 #define STACK_SIZE 16384       // 16 KB kernel stack per task
 
@@ -19,6 +20,7 @@ void sched_init(void) {
     boot->id = next_id++;
     boot->state = TASK_RUNNING;
     boot->stack_base = NULL;     // boot stack isn't heap-allocated
+    boot->pml4 = vmm_kernel_pml4();
     boot->next = boot;           // circle of one
     task_list = boot;
     current = boot;
@@ -53,6 +55,7 @@ struct task* task_create(void (*entry)(void)) {
 
     t->rsp = (uint64_t)sp;
     t->stack_base = stack;
+    t->pml4 = vmm_create_address_space();
     t->id = next_id++;
     t->state = TASK_READY;
 
@@ -80,6 +83,9 @@ void schedule(void) {
     if (prev->state == TASK_RUNNING) prev->state = TASK_READY;
     next->state = TASK_RUNNING;
     current = next;
+
+    if (next->pml4 != prev->pml4)
+        vmm_switch_address_space(next->pml4);   // enter next's address space
 
     context_switch(&prev->rsp, next->rsp);
     // execution resumes here when someone later switches back to prev
