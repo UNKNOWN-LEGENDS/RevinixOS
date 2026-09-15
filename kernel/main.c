@@ -87,36 +87,47 @@ extern uint8_t hello_elf_end[];
 //     jump_usermode(USER_CODE_VADDR, user_stack_top);
 // }
 
-static void usermode_test(void) {
-    uint64_t elf_size = (uint64_t)(hello_elf_end - hello_elf_start);
-    kprintf("Loading embedded ELF (%d bytes)...\n", (int)elf_size);
+// static void usermode_test(void) {
+//     uint64_t elf_size = (uint64_t)(hello_elf_end - hello_elf_start);
+//     kprintf("Loading embedded ELF (%d bytes)...\n", (int)elf_size);
 
-    // 1) fresh address space: empty user half, shared kernel half
-    uint64_t proc = vmm_create_address_space();
-    kprintf("Created process address space: PML4 phys=%p (kernel PML4=%p)\n",
-            (void*)proc, (void*)vmm_kernel_pml4());
+//     // 1) fresh address space: empty user half, shared kernel half
+//     uint64_t proc = vmm_create_address_space();
+//     kprintf("Created process address space: PML4 phys=%p (kernel PML4=%p)\n",
+//             (void*)proc, (void*)vmm_kernel_pml4());
 
-    // 2) load the program INTO the process space (writes go via HHDM, so the
-    //    space need not be active yet)
-    uint64_t entry = elf_load(proc, hello_elf_start, elf_size);
-    if (!entry) { kprintf("ELF load failed.\n"); return; }
+//     // 2) load the program INTO the process space (writes go via HHDM, so the
+//     //    space need not be active yet)
+//     uint64_t entry = elf_load(proc, hello_elf_start, elf_size);
+//     if (!entry) { kprintf("ELF load failed.\n"); return; }
 
-    // 3) user stack, mapped in the process space
-    uint64_t stack_frame = pmm_alloc_frame();
-    vmm_map_page_in(proc, USER_STACK_VADDR, stack_frame, PAGE_WRITABLE | PAGE_USER);
-    uint64_t user_stack_top = USER_STACK_VADDR + 4096;
+//     // 3) user stack, mapped in the process space
+//     uint64_t stack_frame = pmm_alloc_frame();
+//     vmm_map_page_in(proc, USER_STACK_VADDR, stack_frame, PAGE_WRITABLE | PAGE_USER);
+//     uint64_t user_stack_top = USER_STACK_VADDR + 4096;
 
-    // 4) become the process address space, then drop to Ring 3 inside it
-    vmm_switch_address_space(proc);
-    kprintf("Switched to process address space. Entering Ring 3...\n");
+//     // 4) become the process address space, then drop to Ring 3 inside it
+//     vmm_switch_address_space(proc);
+//     kprintf("Switched to process address space. Entering Ring 3...\n");
 
-    // PROOF: allocate + free a frame while a process (no entry-0 identity map)
-    // is the active address space. Pre-fix this faults; post-fix it works.
-    uint64_t probe = pmm_alloc_frame();
-    kprintf("[PMM/HHDM] alloc while process active: frame=%p\n", (void*)probe);
-    pmm_free_frame(probe);
+//     // PROOF: allocate + free a frame while a process (no entry-0 identity map)
+//     // is the active address space. Pre-fix this faults; post-fix it works.
+//     uint64_t probe = pmm_alloc_frame();
+//     kprintf("[PMM/HHDM] alloc while process active: frame=%p\n", (void*)probe);
+//     pmm_free_frame(probe);
 
-    jump_usermode(entry, user_stack_top);
+//     jump_usermode(entry, user_stack_top);
+// }
+
+static struct task* spawn_user_process(const uint8_t* image, uint64_t size) {
+    uint64_t pml4 = vmm_create_address_space();
+    uint64_t entry = elf_load(pml4, image, size);
+    if (!entry) { kprintf("ELF load failed.\n"); return NULL; }
+
+    uint64_t sframe = pmm_alloc_frame();
+    vmm_map_page_in(pml4, USER_STACK_VADDR, sframe, PAGE_WRITABLE | PAGE_USER);
+
+    return task_create_user(entry, pml4, USER_STACK_VADDR + 4096);
 }
 
 void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
@@ -149,12 +160,18 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     // struct task* tb = task_create(task_b);
     // kprintf("Created tasks: A id=%d, B id=%d\n", ta->id, tb->id);
     // kprintf("Starting PREEMPTIVE scheduler (no yields)...\n");
-    kprintf("Testing Ring 3 transition...\n");
-    kprintf("Creating two kernel tasks in separate address space...\n");
+    // kprintf("Testing Ring 3 transition...\n");
+    // kprintf("Creating two kernel tasks in separate address space...\n");
     struct task* ta = task_create(task_a);
     struct task* tb = task_create(task_b);
-    kprintf("Task A id=%d pml4=%p | Task B id=%d pml4=%p | kernel pml4=%p\n", ta->id, (void*)tb->pml4, (void*)vmm_kernel_pml4());
-    kprintf("Starting preemptive scheduler (CR3 swaps per task)...\n");
+    // kprintf("Task A id=%d pml4=%p | Task B id=%d pml4=%p | kernel pml4=%p\n", ta->id, (void*)tb->pml4, (void*)vmm_kernel_pml4());
+    // kprintf("Starting preemptive scheduler (CR3 swaps per task)...\n");
+    kprintf("Spawning a user process as a scheduled task...\n");
+    struct task* up = spawn_user_process(
+        hello_elf_start, (uint64_t)(hello_elf_end - hello_elf_start)
+    );
+    kprintf("User process task id=%d pml4=%p\n", up->id, (void*)up->pml4);
+    kprintf("Starting scheduler; the timer will switch into Ring 3...\n");
     //unreachable
 
     __asm__ volatile ("sti");               //ake sure interrupts are on

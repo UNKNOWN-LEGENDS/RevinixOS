@@ -3,11 +3,13 @@
 #include "../kprintf.h"
 #include <stdint.h>
 #include "../mm/vmm.h"
+#include "../arch/x86_64/gdt.h"
 
 #define STACK_SIZE 16384       // 16 KB kernel stack per task
 
 extern void context_switch(uint64_t* save_old_rsp, uint64_t new_rsp);
 extern void task_entry_trampoline(void);
+extern void user_entry_trampoline(void);
 
 static struct task* current   = NULL;
 static struct task* task_list = NULL;   // circular
@@ -21,6 +23,7 @@ void sched_init(void) {
     boot->state = TASK_RUNNING;
     boot->stack_base = NULL;     // boot stack isn't heap-allocated
     boot->pml4 = vmm_kernel_pml4();
+    boot->kstack_top = tss_get_rsp0();
     boot->next = boot;           // circle of one
     task_list = boot;
     current = boot;
@@ -56,6 +59,7 @@ struct task* task_create(void (*entry)(void)) {
     t->rsp = (uint64_t)sp;
     t->stack_base = stack;
     t->pml4 = vmm_create_address_space();
+    t->kstack_top = top;
     t->id = next_id++;
     t->state = TASK_READY;
 
@@ -65,6 +69,38 @@ struct task* task_create(void (*entry)(void)) {
     p->next = t;
     t->next = task_list;
 
+    return t;
+}
+
+struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack_top) {
+    struct task* t = (struct task*)kmalloc(sizeof(struct task));
+    uint8_t* kstack = (uint8_t*)kmalloc(STACK_SIZE);
+    uint64_t top = ((uint64_t)kstack + STACK_SIZE) & ~0xFULL;
+    uint64_t* sp = (uint64_t*)top;
+
+    // Frame so context_switch's 'ret' lands in user_entry_trampoline, which
+    // pops these two and iretqs to Ring 3.
+    *(--sp) = user_stack_top;           // -> rsi in the trampoline
+    *(--sp) = entry;                    // -> rdi in the trampoline
+    *(--sp) = (uint64_t)user_entry_trampoline;  // context_switch ret target
+    *(--sp) = 0;        //rbp
+    *(--sp) = 0;        //rbx
+    *(--sp) = 0;        //r12
+    *(--sp) = 0;        //r13
+    *(--sp) = 0;        //r14
+    *(--sp) = 0;        //r15
+
+    t->rsp = (uint64_t)sp;
+    t->stack_base = kstack;
+    t->pml4 = pml4;
+    t->kstack_top = top;
+    t->id = next_id++;
+    t->state = TASK_READY;
+
+    struct task* p = task_list;
+    while (p->next != task_list) p = p->next;
+    p->next = t;
+    t->next = task_list;
     return t;
 }
 
@@ -86,6 +122,7 @@ void schedule(void) {
 
     if (next->pml4 != prev->pml4)
         vmm_switch_address_space(next->pml4);   // enter next's address space
+    tss_set_rsp0(next->kstack_top);
 
     context_switch(&prev->rsp, next->rsp);
     // execution resumes here when someone later switches back to prev

@@ -14,5 +14,7 @@
 
 void gdt_init(void);
 void gdt_debug(void);
+void tss_set_rsp0(uint64_t rsp0);
+uint64_t tss_get_rsp0(void);
 
 #endif

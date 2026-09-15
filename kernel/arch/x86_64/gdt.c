@@ -76,6 +76,9 @@ static void set_tss(int i, uint64_t base, uint32_t limit) {
     d->reserved = 0;
 }
 
+void tss_set_rsp0(uint64_t rsp0) { tss.rsp0 = rsp0; }
+uint64_t tss_get_rsp0(void) { return tss.rsp0; }
+
 void gdt_init(void) {
     //null descriptor
     set_entry(0, 0, 0);
