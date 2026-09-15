@@ -166,12 +166,15 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     struct task* tb = task_create(task_b);
     // kprintf("Task A id=%d pml4=%p | Task B id=%d pml4=%p | kernel pml4=%p\n", ta->id, (void*)tb->pml4, (void*)vmm_kernel_pml4());
     // kprintf("Starting preemptive scheduler (CR3 swaps per task)...\n");
-    kprintf("Spawning a user process as a scheduled task...\n");
+    kprintf("Step C: preempting a Ring 3 process alongside a kernel task...\n");
     struct task* up = spawn_user_process(
         hello_elf_start, (uint64_t)(hello_elf_end - hello_elf_start)
     );
-    kprintf("User process task id=%d pml4=%p\n", up->id, (void*)up->pml4);
-    kprintf("Starting scheduler; the timer will switch into Ring 3...\n");
+    struct task* ka = task_create(task_a);
+    // kprintf("User process task id=%d pml4=%p\n", up->id, (void*)up->pml4);
+    // kprintf("Starting scheduler; the timer will switch into Ring 3...\n");
+    kprintf("user id=%d pml4=%p | kernel task id=%d pml4=%p\n", up->id, (void*)up->pml4, ka->id, (void*)ka->pml4);
+    kprintf("Starting scheduler...\n");
     //unreachable
 
     __asm__ volatile ("sti");               //ake sure interrupts are on
