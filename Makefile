@@ -51,7 +51,7 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
         $(BUILD)/pmm.o $(BUILD)/vmm.o $(BUILD)/vga.o $(BUILD)/heap.o \
         $(BUILD)/sched.o $(BUILD)/context_switch.o $(BUILD)/task_entry.o \
         $(BUILD)/usermode.o $(BUILD)/syscall.o $(BUILD)/syscall_entry.o \
-        $(BUILD)/user_program.o $(BUILD)/elf.o userland/hello_embed.o \
+        $(BUILD)/user_program.o $(BUILD)/elf.o \
 		$(BUILD)/ata.o
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
@@ -60,13 +60,9 @@ $(BUILD)/elf.o: kernel/user/elf.c
 	mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $< -o $@
 
-userland/hello_embed.o: userland/hello.asm userland/user.ld
+userland/hello.elf: userland/hello.asm userland/user.ld
 	nasm -f elf64 userland/hello.asm -o userland/hello.o
 	x86_64-elf-ld -T userland/user.ld userland/hello.o -o userland/hello.elf
-	x86_64-elf-objcopy -I binary -O elf64-x86-64 -B i386:x86-64 \
-	    --redefine-sym _binary_userland_hello_elf_start=hello_elf_start \
-	    --redefine-sym _binary_userland_hello_elf_end=hello_elf_end \
-	    userland/hello.elf userland/hello_embed.o
 
 $(BUILD)/ata.o: kernel/drivers/ata.c
 	$(CC) $(CFLAGS) -c kernel/drivers/ata.c -o $@
@@ -163,7 +159,7 @@ $(ISO_DIR)/boot/kernel.bin: $(OBJS) linker.ld
 	mkdir -p $(ISO_DIR)/boot/grub
 	$(LD) $(LDFLAGS) -o $@ $(OBJS)
 
-run: $(ISO) disk.img
+run: $(ISO) disk-load
 	qemu-system-x86_64 -cdrom myos.iso \
 		-drive file=disk.img,format=raw,if=ide \
 		-serial stdio
@@ -179,4 +175,6 @@ myos.iso: $(ISO_DIR)/boot/kernel.bin
 clean:
 	rm -rf $(BUILD) myos.iso $(ISO_DIR)/boot/kernel.bin
 
-.PHONY: all run clean
+.PHONY: disk-load
+disk-load: disk.img userland/hello.elf
+	dd if=userland/hello.elf of=disk.img bs=512 seek=2048 conv=notrunc

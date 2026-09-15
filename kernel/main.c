@@ -37,8 +37,9 @@ extern void jump_usermode(uint64_t entry, uint64_t user_stack);
 extern uint8_t user_program_start[];
 extern uint8_t user_program_end[];
 
-extern uint8_t hello_elf_start[];
-extern uint8_t hello_elf_end[];
+#define USER_ELF_LBA 2048           // sector where the Makefile writes hello.elf
+#define USER_ELF_SECTORS 16         // 8 KB, generous for the ~5 KB ELF.
+                                    // Day-1 hardcode; a real filesystem reports the true size later.
 
 #define USER_CODE_VADDR 0x0000000100000000ull   //4GB (above the identity map)
 #define USER_STACK_VADDR 0x0000000200000000ull   //8GB
@@ -131,6 +132,22 @@ static struct task* spawn_user_process(const uint8_t* image, uint64_t size) {
     return task_create_user(entry, pml4, USER_STACK_VADDR + 4096);
 }
 
+// Read a program image off the disk into a heap buffer. Caller frees it once
+// elf_load has copied the segments out.
+static uint8_t* load_from_disk(uint32_t lba, uint32_t sectors, uint64_t* out_size) {
+    uint64_t bytes = (uint64_t)sectors * ATA_SECTOR_SIZE;
+    uint8_t* buf = (uint8_t*)kmalloc(bytes);
+    if (!buf) { kprintf("load_from_disk: kmalloc(%d) failed\n", (int)bytes); return NULL; }
+    if (ata_read(lba, (uint8_t)sectors, buf) != 0) {
+        kprintf("load_from_disk: ata_read failed at LBA %d\n", (int)lba);
+        kfree(buf);
+        return NULL;
+    }
+    *out_size = bytes;
+    kprintf("disk: read %d-byte ELF image from LBA %d\n", (int)bytes, (int)lba);
+    return buf;
+}
+
 static void disk_test(void) {
     uint8_t out[ATA_SECTOR_SIZE];
     uint8_t in[ATA_SECTOR_SIZE];
@@ -199,9 +216,12 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     // kprintf("Task A id=%d pml4=%p | Task B id=%d pml4=%p | kernel pml4=%p\n", ta->id, (void*)tb->pml4, (void*)vmm_kernel_pml4());
     // kprintf("Starting preemptive scheduler (CR3 swaps per task)...\n");
     kprintf("Step C: preempting a Ring 3 process alongside a kernel task...\n");
-    struct task* up = spawn_user_process(
-        hello_elf_start, (uint64_t)(hello_elf_end - hello_elf_start)
-    );
+    uint64_t elf_size;
+    uint8_t* image = load_from_disk(USER_ELF_LBA, USER_ELF_SECTORS, &elf_size);
+    struct task* up = image ? spawn_user_process(image, elf_size) : NULL;
+    if (image) kfree(image);          // elf_load already copied the segments out
+    if (!up) { kprintf("Failed to spawn user process from disk.\n");
+               for (;;) __asm__ volatile ("hlt"); }
     struct task* ka = task_create(task_a);
     // kprintf("User process task id=%d pml4=%p\n", up->id, (void*)up->pml4);
     // kprintf("Starting scheduler; the timer will switch into Ring 3...\n");
