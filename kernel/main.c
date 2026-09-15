@@ -11,6 +11,7 @@
 #include "sched/sched.h"
 #include "user/elf.h"
 #include "syscall/syscall.h"
+#include "drivers/ata.h"
 
 void irq_install(void);
 
@@ -130,6 +131,35 @@ static struct task* spawn_user_process(const uint8_t* image, uint64_t size) {
     return task_create_user(entry, pml4, USER_STACK_VADDR + 4096);
 }
 
+static void disk_test(void) {
+    uint8_t out[ATA_SECTOR_SIZE];
+    uint8_t in[ATA_SECTOR_SIZE];
+
+    // recognizable pattern
+    for (int i = 0; i < ATA_SECTOR_SIZE; i++) out[i] = (uint8_t)(i ^ 0x5A);
+
+    const uint32_t lba = 100;   // scratch sector, well clear of anything
+
+    kprintf("disk: writing pattern to LBA %d...\n", (int)lba);
+    if (ata_write(lba, 1, out) != 0) { kprintf("disk: WRITE FAILED\n"); return; }
+
+    for (int i = 0; i < ATA_SECTOR_SIZE; i++) in[i] = 0;   // clear read buffer
+
+    kprintf("disk: reading LBA %d back...\n", (int)lba);
+    if (ata_read(lba, 1, in) != 0) { kprintf("disk: READ FAILED\n"); return; }
+
+    int mismatch = -1;
+    for (int i = 0; i < ATA_SECTOR_SIZE; i++)
+        if (in[i] != out[i]) { mismatch = i; break; }
+
+    if (mismatch < 0)
+        kprintf("disk: ROUND-TRIP PASS (512 bytes match). first bytes: %x %x %x %x\n",
+                in[0], in[1], in[2], in[3]);
+    else
+        kprintf("disk: MISMATCH at byte %d (wrote %x, read %x)\n",
+                mismatch, out[mismatch], in[mismatch]);
+}
+
 void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     serial_init();
     uint64_t rsp;
@@ -152,6 +182,8 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     kprintf("VGA: printed hello world to screen. \n");
 
     heap_init();
+
+    disk_test();
 
     sched_init();
     syscall_init();         // <-- install int 0x80 before going to user mode

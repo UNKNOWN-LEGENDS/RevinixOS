@@ -50,7 +50,8 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
         $(BUILD)/pmm.o $(BUILD)/vmm.o $(BUILD)/vga.o $(BUILD)/heap.o \
         $(BUILD)/sched.o $(BUILD)/context_switch.o $(BUILD)/task_entry.o \
         $(BUILD)/usermode.o $(BUILD)/syscall.o $(BUILD)/syscall_entry.o \
-        $(BUILD)/user_program.o $(BUILD)/elf.o userland/hello_embed.o
+        $(BUILD)/user_program.o $(BUILD)/elf.o userland/hello_embed.o \
+		$(BUILD)/ata.o
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
 
@@ -65,6 +66,9 @@ userland/hello_embed.o: userland/hello.asm userland/user.ld
 	    --redefine-sym _binary_userland_hello_elf_start=hello_elf_start \
 	    --redefine-sym _binary_userland_hello_elf_end=hello_elf_end \
 	    userland/hello.elf userland/hello_embed.o
+
+$(BUILD)/ata.o: kernel/drivers/ata.c
+	$(CC) $(CFLAGS) -c kernel/drivers/ata.c -o $@
 
 $(BUILD)/syscall.o: kernel/syscall/syscall.c
 	mkdir -p $(BUILD)
@@ -157,6 +161,13 @@ $(BUILD)/main.o: kernel/main.c
 $(ISO_DIR)/boot/kernel.bin: $(OBJS) linker.ld
 	mkdir -p $(ISO_DIR)/boot/grub
 	$(LD) $(LDFLAGS) -o $@ $(OBJS)
+
+run: $(ISO) disk.img
+	qemu-system-x86_64 -cdrom myos.iso \
+		-drive file=disk.img,format-raw,if=ide \
+		-serial stdio
+disk.img:
+	qemu-img create -f raw disk.img 16M
 
 myos.iso: $(ISO_DIR)/boot/kernel.bin
 	grub-mkrescue -o myos.iso $(ISO_DIR)
