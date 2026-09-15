@@ -9,6 +9,7 @@ LDFLAGS := -ffreestanding -nostdlib -T linker.ld -z max-page-size=0x1000
 
 BUILD := build
 ISO_DIR := iso
+ISO = myos.iso
 
 #OBJS := $(BUILD)/boot.o $(BUILD)/main.o
 #OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o
@@ -164,7 +165,7 @@ $(ISO_DIR)/boot/kernel.bin: $(OBJS) linker.ld
 
 run: $(ISO) disk.img
 	qemu-system-x86_64 -cdrom myos.iso \
-		-drive file=disk.img,format-raw,if=ide \
+		-drive file=disk.img,format=raw,if=ide \
 		-serial stdio
 disk.img:
 	qemu-img create -f raw disk.img 16M
@@ -172,8 +173,8 @@ disk.img:
 myos.iso: $(ISO_DIR)/boot/kernel.bin
 	grub-mkrescue -o myos.iso $(ISO_DIR)
 
-run: myos.iso
-	qemu-system-x86_64 -cdrom myos.iso -serial stdio
+# run: myos.iso
+# 	qemu-system-x86_64 -cdrom myos.iso -serial stdio
 
 clean:
 	rm -rf $(BUILD) myos.iso $(ISO_DIR)/boot/kernel.bin
