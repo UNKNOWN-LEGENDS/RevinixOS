@@ -12,6 +12,7 @@
 #include "user/elf.h"
 #include "syscall/syscall.h"
 #include "drivers/ata.h"
+#include "fs/fat32.h"
 
 void irq_install(void);
 
@@ -201,6 +202,12 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     heap_init();
 
     disk_test();
+
+    struct fat32_fs fs;
+    if (fat32_init(&fs) == 0)
+        kprintf("fat32: geometry parsed successfully.\n");
+    else
+        kprintf("fat32: init FAILED.\n");
 
     sched_init();
     syscall_init();         // <-- install int 0x80 before going to user mode

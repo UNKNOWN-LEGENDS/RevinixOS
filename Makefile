@@ -56,6 +56,10 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
 
+$(BUILD)/fat32.o: kernel/fs/fat32.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -c kernel/fs/fat32.c -o $@
+
 $(BUILD)/elf.o: kernel/user/elf.c
 	mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $< -o $@
@@ -163,8 +167,11 @@ run: $(ISO) disk-load
 	qemu-system-x86_64 -cdrom myos.iso \
 		-drive file=disk.img,format=raw,if=ide \
 		-serial stdio
-disk.img:
+disk.img: userland/hello.elf
 	qemu-img create -f raw disk.img 16M
+	mkfs.vfat -F 32 -n REVINIX disk.img
+	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
+	dd if=userland/hello.elf of=disk.img bs=512 seek=2048 conv=notrunc
 
 myos.iso: $(ISO_DIR)/boot/kernel.bin
 	grub-mkrescue -o myos.iso $(ISO_DIR)
@@ -176,5 +183,4 @@ clean:
 	rm -rf $(BUILD) myos.iso $(ISO_DIR)/boot/kernel.bin
 
 .PHONY: disk-load
-disk-load: disk.img userland/hello.elf
-	dd if=userland/hello.elf of=disk.img bs=512 seek=2048 conv=notrunc
+disk-load: disk.img
