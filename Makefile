@@ -52,7 +52,7 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
         $(BUILD)/sched.o $(BUILD)/context_switch.o $(BUILD)/task_entry.o \
         $(BUILD)/usermode.o $(BUILD)/syscall.o $(BUILD)/syscall_entry.o \
         $(BUILD)/user_program.o $(BUILD)/elf.o \
-		$(BUILD)/ata.o
+		$(BUILD)/ata.o $(BUILD)/fat32.o
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
 
@@ -166,7 +166,9 @@ $(ISO_DIR)/boot/kernel.bin: $(OBJS) linker.ld
 run: $(ISO) disk-load
 	qemu-system-x86_64 -cdrom myos.iso \
 		-drive file=disk.img,format=raw,if=ide \
+		-boot order=d \
 		-serial stdio
+
 disk.img: userland/hello.elf
 	qemu-img create -f raw disk.img 16M
 	mkfs.vfat -F 32 -n REVINIX disk.img
