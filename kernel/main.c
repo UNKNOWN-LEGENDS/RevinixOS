@@ -13,6 +13,7 @@
 #include "syscall/syscall.h"
 #include "drivers/ata.h"
 #include "fs/fat32.h"
+#include "fs/vfs.h"
 
 void irq_install(void);
 
@@ -133,24 +134,23 @@ static struct task* spawn_user_process(const uint8_t* image, uint64_t size) {
     return task_create_user(entry, pml4, USER_STACK_VADDR + 4096);
 }
 
-// Load a named program off the FAT32 filesystem into a heap buffer sized to the
-// file's true length. Caller frees it once elf_load has copied the segments out.
-static uint8_t* load_from_fat32(struct fat32_fs* fs, const char* name, uint64_t* out_size) {
-    struct fat32_file f;
-    if (fat32_find(fs, name, &f) != 0) {
+// Load a named program through the VFS into a heap buffer sized to the file.
+// Caller frees it once elf_load has copied the segments out.
+static uint8_t* load_program(const char* name, uint64_t* out_size) {
+    struct vfs_file file;
+    if (vfs_open(name, &file) != 0) {
         kprintf("fs: '%s' not found\n", name);
         return NULL;
     }
-    uint8_t* buf = (uint8_t*)kmalloc(f.size);
-    if (!buf) { kprintf("fs: kmalloc(%d) failed for '%s'\n", (int)f.size, name); return NULL; }
-    if (fat32_read_file(fs, &f, buf, f.size) != (int)f.size) {
+    uint8_t* buf = (uint8_t*)kmalloc(file.size);
+    if (!buf) { kprintf("fs: kmalloc(%d) failed for '%s'\n", (int)file.size, name); return NULL; }
+    if (vfs_read(&file, buf, file.size) != (int)file.size) {
         kprintf("fs: read of '%s' failed\n", name);
         kfree(buf);
         return NULL;
     }
-    *out_size = f.size;
-    kprintf("fs: loaded '%s' from FAT32 (%d bytes, start cluster %d)\n",
-            name, (int)f.size, (int)f.start_cluster);
+    *out_size = file.size;
+    kprintf("fs: loaded '%s' via VFS (%d bytes)\n", name, (int)file.size);
     return buf;
 }
 
@@ -224,6 +224,8 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
         }
         kprintf("fat32: end of chain (last next=%p)\n", (void*)(uint64_t)c);
 
+        vfs_mount(&fs);
+
         fat32_list_root(&fs);
 
         struct fat32_file f;
@@ -263,7 +265,7 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     // kprintf("Starting preemptive scheduler (CR3 swaps per task)...\n");
     kprintf("Step C: preempting a Ring 3 process alongside a kernel task...\n");
     uint64_t elf_size;
-    uint8_t* image = fs_ok ? load_from_fat32(&fs, "HELLO.ELF", &elf_size) : NULL;
+    uint8_t* image = fs_ok ? load_program("HELLO.ELF", &elf_size) : NULL;
     struct task* up = image ? spawn_user_process(image, elf_size) : NULL;
     if (image) kfree(image);
     if (!up) { kprintf("Failed to spawn user process from filesystem.\n");

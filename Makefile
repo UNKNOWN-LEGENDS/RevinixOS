@@ -52,9 +52,13 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
         $(BUILD)/sched.o $(BUILD)/context_switch.o $(BUILD)/task_entry.o \
         $(BUILD)/usermode.o $(BUILD)/syscall.o $(BUILD)/syscall_entry.o \
         $(BUILD)/user_program.o $(BUILD)/elf.o \
-		$(BUILD)/ata.o $(BUILD)/fat32.o
+		$(BUILD)/ata.o $(BUILD)/fat32.o $(BUILD)/vfs.o
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
+
+$(BUILD)/vfs.o: kernel/fs/vfs.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -c kernel/fs/vfs.c -o $@
 
 $(BUILD)/fat32.o: kernel/fs/fat32.c
 	mkdir -p $(BUILD)
