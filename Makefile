@@ -173,7 +173,6 @@ disk.img: userland/hello.elf
 	qemu-img create -f raw disk.img 16M
 	mkfs.vfat -F 32 -n REVINIX disk.img
 	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
-	dd if=userland/hello.elf of=disk.img bs=512 seek=2048 conv=notrunc
 
 myos.iso: $(ISO_DIR)/boot/kernel.bin
 	grub-mkrescue -o myos.iso $(ISO_DIR)

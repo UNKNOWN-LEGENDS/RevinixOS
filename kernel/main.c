@@ -133,19 +133,24 @@ static struct task* spawn_user_process(const uint8_t* image, uint64_t size) {
     return task_create_user(entry, pml4, USER_STACK_VADDR + 4096);
 }
 
-// Read a program image off the disk into a heap buffer. Caller frees it once
-// elf_load has copied the segments out.
-static uint8_t* load_from_disk(uint32_t lba, uint32_t sectors, uint64_t* out_size) {
-    uint64_t bytes = (uint64_t)sectors * ATA_SECTOR_SIZE;
-    uint8_t* buf = (uint8_t*)kmalloc(bytes);
-    if (!buf) { kprintf("load_from_disk: kmalloc(%d) failed\n", (int)bytes); return NULL; }
-    if (ata_read(lba, (uint8_t)sectors, buf) != 0) {
-        kprintf("load_from_disk: ata_read failed at LBA %d\n", (int)lba);
+// Load a named program off the FAT32 filesystem into a heap buffer sized to the
+// file's true length. Caller frees it once elf_load has copied the segments out.
+static uint8_t* load_from_fat32(struct fat32_fs* fs, const char* name, uint64_t* out_size) {
+    struct fat32_file f;
+    if (fat32_find(fs, name, &f) != 0) {
+        kprintf("fs: '%s' not found\n", name);
+        return NULL;
+    }
+    uint8_t* buf = (uint8_t*)kmalloc(f.size);
+    if (!buf) { kprintf("fs: kmalloc(%d) failed for '%s'\n", (int)f.size, name); return NULL; }
+    if (fat32_read_file(fs, &f, buf, f.size) != (int)f.size) {
+        kprintf("fs: read of '%s' failed\n", name);
         kfree(buf);
         return NULL;
     }
-    *out_size = bytes;
-    kprintf("disk: read %d-byte ELF image from LBA %d\n", (int)bytes, (int)lba);
+    *out_size = f.size;
+    kprintf("fs: loaded '%s' from FAT32 (%d bytes, start cluster %d)\n",
+            name, (int)f.size, (int)f.start_cluster);
     return buf;
 }
 
@@ -204,7 +209,8 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     disk_test();
 
     struct fat32_fs fs;
-    if (fat32_init(&fs) == 0) {
+    int fs_ok = (fat32_init(&fs) == 0);
+    if (fs_ok) {
         kprintf("fat32: geometry parsed successfully.\n");
 
         // Walk the root directory's cluster chain from root_cluster to EOC.
@@ -257,10 +263,10 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     // kprintf("Starting preemptive scheduler (CR3 swaps per task)...\n");
     kprintf("Step C: preempting a Ring 3 process alongside a kernel task...\n");
     uint64_t elf_size;
-    uint8_t* image = load_from_disk(USER_ELF_LBA, USER_ELF_SECTORS, &elf_size);
+    uint8_t* image = fs_ok ? load_from_fat32(&fs, "HELLO.ELF", &elf_size) : NULL;
     struct task* up = image ? spawn_user_process(image, elf_size) : NULL;
-    if (image) kfree(image);          // elf_load already copied the segments out
-    if (!up) { kprintf("Failed to spawn user process from disk.\n");
+    if (image) kfree(image);
+    if (!up) { kprintf("Failed to spawn user process from filesystem.\n");
                for (;;) __asm__ volatile ("hlt"); }
     struct task* ka = task_create(task_a);
     // kprintf("User process task id=%d pml4=%p\n", up->id, (void*)up->pml4);
