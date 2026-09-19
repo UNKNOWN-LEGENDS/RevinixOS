@@ -2,6 +2,8 @@
 #define FAT32_H
 #include <stdint.h>
 
+#define FAT32_EOC 0x0FFFFFF8
+
 // The parts of the FAT32 boot sector (BPB) we care about. Packed: this maps
 // directly onto the on-disk bytes of sector 0.
 struct fat32_bpb {
@@ -43,6 +45,8 @@ struct fat32_fs {
     uint32_t bytes_per_sector;
     uint32_t root_cluster;
 };
+
+uint32_t fat32_next_cluster(const struct fat32_fs* fs, uint32_t cluster);
 
 // Read + validate the boot sector, fill in geometry. Returns 0 on success.
 int fat32_init(struct fat32_fs* fs);

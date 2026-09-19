@@ -46,3 +46,23 @@ int fat32_init(struct fat32_fs* fs) {
             (int)fs->fat_start_lba, (int)fs->data_start_lba, (int)fs->root_cluster);
     return 0;
 }
+
+uint32_t fat32_next_cluster(const struct fat32_fs* fs, uint32_t cluster) {
+    // Each FAT32 entry is 4 bytes; cluster N's entry is at byte offset N*4.
+    uint32_t fat_offset = cluster * 4;
+    uint32_t fat_sector = fs->fat_start_lba + (fat_offset / ATA_SECTOR_SIZE);
+    uint32_t offset_in_sector = fat_offset % ATA_SECTOR_SIZE;
+
+    uint8_t sector[ATA_SECTOR_SIZE];
+    if (ata_read(fat_sector, 1, sector) != 0) {
+        kprintf("fat32: FAT read failed at LBA %d\n", (int)fat_sector);
+        return 0;
+    }
+
+    // Little-endian 32-bit entry; only the low 28 bits are the cluster number.
+    uint32_t entry = (uint32_t)sector[offset_in_sector]
+                   | ((uint32_t)sector[offset_in_sector + 1] << 8)
+                   | ((uint32_t)sector[offset_in_sector + 2] << 16)
+                   | ((uint32_t)sector[offset_in_sector + 3] << 24);
+    return entry & 0x0FFFFFFF;
+}

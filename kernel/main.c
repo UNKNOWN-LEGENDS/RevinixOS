@@ -204,10 +204,22 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     disk_test();
 
     struct fat32_fs fs;
-    if (fat32_init(&fs) == 0)
+    if (fat32_init(&fs) == 0) {
         kprintf("fat32: geometry parsed successfully.\n");
-    else
+
+        // Walk the root directory's cluster chain from root_cluster to EOC.
+        kprintf("fat32: walking root-dir chain from cluster %d:\n", (int)fs.root_cluster);
+        uint32_t c = fs.root_cluster;
+        int guard = 0;
+        while (c < FAT32_EOC && c >= 2) {
+            kprintf("   cluster %d\n", (int)c);
+            c = fat32_next_cluster(&fs, c);
+            if (++guard > 64) { kprintf("   (guard hit — chain too long, stopping)\n"); break; }
+        }
+        kprintf("fat32: end of chain (last next=%p)\n", (void*)(uint64_t)c);
+    } else {
         kprintf("fat32: init FAILED.\n");
+    }
 
     sched_init();
     syscall_init();         // <-- install int 0x80 before going to user mode
