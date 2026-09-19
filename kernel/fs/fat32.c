@@ -162,3 +162,43 @@ int fat32_find(const struct fat32_fs* fs, const char* name, struct fat32_file* o
     }
     return -1;   // not found
 }
+
+int fat32_read_file(const struct fat32_fs* fs, const struct fat32_file* file,
+                    uint8_t* buf, uint32_t buf_size) {
+    if (buf_size < file->size) {
+        kprintf("fat32: buffer too small (%d < %d)\n", (int)buf_size, (int)file->size);
+        return -1;
+    }
+
+    uint32_t cluster = file->start_cluster;
+    uint32_t copied = 0;
+    int guard = 0;
+
+    while (cluster >= 2 && cluster < FAT32_EOC && copied < file->size) {
+        uint32_t lba = fs->data_start_lba + (cluster - 2) * fs->sectors_per_cluster;
+
+        // Read the whole cluster, sector by sector, into buf (bounded by size).
+        for (uint32_t s = 0; s < fs->sectors_per_cluster && copied < file->size; s++) {
+            uint8_t sector[ATA_SECTOR_SIZE];
+            if (ata_read(lba + s, 1, sector) != 0) {
+                kprintf("fat32: file read failed at LBA %d\n", (int)(lba + s));
+                return -1;
+            }
+
+            // Copy only up to what's left of the real file (last sector is partial).
+            uint32_t remaining = file->size - copied;
+            uint32_t take = (remaining < ATA_SECTOR_SIZE) ? remaining : ATA_SECTOR_SIZE;
+            for (uint32_t b = 0; b < take; b++) buf[copied + b] = sector[b];
+            copied += take;
+        }
+
+        cluster = fat32_next_cluster(fs, cluster);
+        if (++guard > 1024) { kprintf("fat32: file chain guard hit\n"); return -1; }
+    }
+
+    if (copied != file->size) {
+        kprintf("fat32: short read (%d of %d bytes)\n", (int)copied, (int)file->size);
+        return -1;
+    }
+    return (int)copied;
+}

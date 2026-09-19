@@ -84,6 +84,10 @@ struct fat32_file {
 // Returns 0 and fills *out on success; -1 if not found.
 int fat32_find(const struct fat32_fs* fs, const char* name, struct fat32_file* out);
 
+// Read a file's contents (located via fat32_find) into `buf`.
+// `buf_size` must be >= file->size. Returns bytes read, or -1 on error.
+int fat32_read_file(const struct fat32_fs* fs, const struct fat32_file* file, uint8_t* buf, uint32_t buf_size);
+
 // Read + validate the boot sector, fill in geometry. Returns 0 on success.
 int fat32_init(struct fat32_fs* fs);
 

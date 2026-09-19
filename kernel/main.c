@@ -219,13 +219,23 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
         kprintf("fat32: end of chain (last next=%p)\n", (void*)(uint64_t)c);
 
         fat32_list_root(&fs);
-        
+
         struct fat32_file f;
-        if (fat32_find(&fs, "HELLO.ELF", &f) == 0)
+        if (fat32_find(&fs, "HELLO.ELF", &f) == 0) {
             kprintf("fat32: found HELLO.ELF -> start_cluster=%d, size=%d bytes\n",
                     (int)f.start_cluster, (int)f.size);
-        else
+
+            uint8_t* filebuf = (uint8_t*)kmalloc(f.size);
+            if (filebuf && fat32_read_file(&fs, &f, filebuf, f.size) == (int)f.size) {
+                kprintf("fat32: read %d bytes. ELF magic: %x %x %x %x\n",
+                        (int)f.size, filebuf[0], filebuf[1], filebuf[2], filebuf[3]);
+            } else {
+                kprintf("fat32: file read FAILED\n");
+            }
+            if (filebuf) kfree(filebuf);
+        } else {
             kprintf("fat32: HELLO.ELF NOT FOUND\n");
+        }
     } else {
         kprintf("fat32: init FAILED.\n");
     }
