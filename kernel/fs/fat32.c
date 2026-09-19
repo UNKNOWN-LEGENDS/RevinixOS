@@ -2,6 +2,59 @@
 #include "../drivers/ata.h"
 #include "../kprintf.h"
 
+static void fat32_format_name(const uint8_t name[11], char* out) {
+    int o = 0;
+    for (int i = 0; i < 8; i++) {           // base name, stop at padding
+        if (name[i] == ' ') break;
+        out[o++] = name[i];
+    }
+    if (name[8] != ' ') {                    // extension, only if present
+        out[o++] = '.';
+        for (int i = 8; i < 11; i++) {
+            if (name[i] == ' ') break;
+            out[o++] = name[i];
+        }
+    }
+    out[o] = '\0';
+}
+
+void fat32_list_root(const struct fat32_fs* fs) {
+    kprintf("fat32: root directory listing:\n");
+
+    uint32_t cluster = fs->root_cluster;
+    int guard = 0;
+
+    while (cluster >= 2 && cluster < FAT32_EOC) {
+        uint32_t lba = fs->data_start_lba + (cluster - 2) * fs->sectors_per_cluster;
+
+        for (uint32_t s = 0; s < fs->sectors_per_cluster; s++) {
+            uint8_t sector[ATA_SECTOR_SIZE];
+            if (ata_read(lba + s, 1, sector) != 0) {
+                kprintf("fat32: dir read failed at LBA %d\n", (int)(lba + s));
+                return;
+            }
+
+            struct fat32_dirent* e = (struct fat32_dirent*)sector;
+            for (uint32_t i = 0; i < ATA_SECTOR_SIZE / 32; i++, e++) {
+                if (e->name[0] == DIRENT_END) { kprintf("fat32: (end of directory)\n"); return; }
+                if (e->name[0] == DIRENT_DELETED) continue;
+                if (e->attr == FAT_ATTR_LFN)      continue;
+                if (e->attr & FAT_ATTR_VOLUME_ID) continue;
+
+                char pretty[13];
+                fat32_format_name(e->name, pretty);
+                uint32_t start = ((uint32_t)e->cluster_hi << 16) | e->cluster_lo;
+                kprintf("   %s   (cluster %d, %d bytes%s)\n",
+                        pretty, (int)start, (int)e->size,
+                        (e->attr & FAT_ATTR_DIRECTORY) ? ", dir" : "");
+            }
+        }
+
+        cluster = fat32_next_cluster(fs, cluster);
+        if (++guard > 64) { kprintf("fat32: dir chain guard hit\n"); return; }
+    }
+}
+
 int fat32_init(struct fat32_fs* fs) {
     uint8_t sector[ATA_SECTOR_SIZE];
 

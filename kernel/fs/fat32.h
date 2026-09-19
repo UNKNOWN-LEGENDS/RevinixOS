@@ -48,6 +48,32 @@ struct fat32_fs {
 
 uint32_t fat32_next_cluster(const struct fat32_fs* fs, uint32_t cluster);
 
+// One 32-byte on-disk directory entry. Packed to match the disk layout.
+struct fat32_dirent {
+    uint8_t  name[11];        // 8.3, space-padded, no dot (offset 0)
+    uint8_t  attr;            // offset 11
+    uint8_t  nt_reserved;     // offset 12
+    uint8_t  create_tenth;    // offset 13
+    uint16_t create_time;     // offset 14
+    uint16_t create_date;     // offset 16
+    uint16_t access_date;     // offset 18
+    uint16_t cluster_hi;      // offset 20  high 16 bits of start cluster
+    uint16_t write_time;      // offset 22
+    uint16_t write_date;      // offset 24
+    uint16_t cluster_lo;      // offset 26  low 16 bits of start cluster
+    uint32_t size;            // offset 28  file size in bytes
+} __attribute__((packed));
+
+#define FAT_ATTR_LFN         0x0F   // long-filename fragment: skip
+#define FAT_ATTR_DIRECTORY   0x10
+#define FAT_ATTR_VOLUME_ID   0x08
+
+#define DIRENT_END      0x00   // name[0]: no more entries in this directory
+#define DIRENT_DELETED  0xE5   // name[0]: deleted entry, skip
+
+// Debug: read the root directory and print every 8.3 filename found.
+void fat32_list_root(const struct fat32_fs* fs);
+
 // Read + validate the boot sector, fill in geometry. Returns 0 on success.
 int fat32_init(struct fat32_fs* fs);
 

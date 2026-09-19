@@ -221,6 +221,8 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
         kprintf("fat32: init FAILED.\n");
     }
 
+    fat32_list_root(&fs);
+
     sched_init();
     syscall_init();         // <-- install int 0x80 before going to user mode
     kprintf("Testing user program with syscalls...\n");
