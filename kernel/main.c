@@ -217,11 +217,20 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
             if (++guard > 64) { kprintf("   (guard hit — chain too long, stopping)\n"); break; }
         }
         kprintf("fat32: end of chain (last next=%p)\n", (void*)(uint64_t)c);
+
+        fat32_list_root(&fs);
+        
+        struct fat32_file f;
+        if (fat32_find(&fs, "HELLO.ELF", &f) == 0)
+            kprintf("fat32: found HELLO.ELF -> start_cluster=%d, size=%d bytes\n",
+                    (int)f.start_cluster, (int)f.size);
+        else
+            kprintf("fat32: HELLO.ELF NOT FOUND\n");
     } else {
         kprintf("fat32: init FAILED.\n");
     }
 
-    fat32_list_root(&fs);
+    
 
     sched_init();
     syscall_init();         // <-- install int 0x80 before going to user mode

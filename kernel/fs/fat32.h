@@ -74,6 +74,16 @@ struct fat32_dirent {
 // Debug: read the root directory and print every 8.3 filename found.
 void fat32_list_root(const struct fat32_fs* fs);
 
+// Result of a successful directory lookup.
+struct fat32_file {
+    uint32_t start_cluster;   // first cluster of the file's data
+    uint32_t size;            // exact file size in bytes
+};
+
+// Find an 8.3 file by name (uppercase "NAME.EXT") in the root directory.
+// Returns 0 and fills *out on success; -1 if not found.
+int fat32_find(const struct fat32_fs* fs, const char* name, struct fat32_file* out);
+
 // Read + validate the boot sector, fill in geometry. Returns 0 on success.
 int fat32_init(struct fat32_fs* fs);
 

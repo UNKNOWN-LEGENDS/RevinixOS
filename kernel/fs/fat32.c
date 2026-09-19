@@ -119,3 +119,46 @@ uint32_t fat32_next_cluster(const struct fat32_fs* fs, uint32_t cluster) {
                    | ((uint32_t)sector[offset_in_sector + 3] << 24);
     return entry & 0x0FFFFFFF;
 }
+
+// Minimal string compare (kernel has no libc). Returns 1 if equal.
+static int fat_streq(const char* a, const char* b) {
+    while (*a && *b) { if (*a != *b) return 0; a++; b++; }
+    return *a == *b;   // both must end together
+}
+
+int fat32_find(const struct fat32_fs* fs, const char* name, struct fat32_file* out) {
+    uint32_t cluster = fs->root_cluster;
+    int guard = 0;
+
+    while (cluster >= 2 && cluster < FAT32_EOC) {
+        uint32_t lba = fs->data_start_lba + (cluster - 2) * fs->sectors_per_cluster;
+
+        for (uint32_t s = 0; s < fs->sectors_per_cluster; s++) {
+            uint8_t sector[ATA_SECTOR_SIZE];
+            if (ata_read(lba + s, 1, sector) != 0) {
+                kprintf("fat32: dir read failed at LBA %d\n", (int)(lba + s));
+                return -1;
+            }
+
+            struct fat32_dirent* e = (struct fat32_dirent*)sector;
+            for (uint32_t i = 0; i < ATA_SECTOR_SIZE / 32; i++, e++) {
+                if (e->name[0] == DIRENT_END)     return -1;   // whole dir scanned
+                if (e->name[0] == DIRENT_DELETED) continue;
+                if (e->attr == FAT_ATTR_LFN)      continue;
+                if (e->attr & FAT_ATTR_VOLUME_ID) continue;
+
+                char pretty[13];
+                fat32_format_name(e->name, pretty);
+                if (fat_streq(pretty, name)) {
+                    out->start_cluster = ((uint32_t)e->cluster_hi << 16) | e->cluster_lo;
+                    out->size          = e->size;
+                    return 0;                                  // found it
+                }
+            }
+        }
+
+        cluster = fat32_next_cluster(fs, cluster);
+        if (++guard > 64) return -1;
+    }
+    return -1;   // not found
+}
