@@ -3,6 +3,7 @@
 #include "../../kprintf.h"
 #include "../../sched/sched.h"
 #include <stdint.h>
+#include "../../drivers/keyboard.h"
 
 extern void* irq_stub_table[];
 void set_gate_external(int vec, void* handler, uint8_t type_attr); // from idt.c
@@ -66,7 +67,7 @@ void irq_handler(struct interrupt_frame* frame) {
         case 1: { // keyboard
             uint8_t scancode;
             __asm__ volatile ("inb $0x60, %0" : "=a"(scancode));
-            kprintf("[key scancode: %x]\n", scancode);
+            keyboard_handle_scancode(scancode);
             break;
         }
         default:

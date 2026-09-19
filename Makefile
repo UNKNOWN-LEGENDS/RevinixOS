@@ -52,9 +52,13 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
         $(BUILD)/sched.o $(BUILD)/context_switch.o $(BUILD)/task_entry.o \
         $(BUILD)/usermode.o $(BUILD)/syscall.o $(BUILD)/syscall_entry.o \
         $(BUILD)/user_program.o $(BUILD)/elf.o \
-		$(BUILD)/ata.o $(BUILD)/fat32.o $(BUILD)/vfs.o
+		$(BUILD)/ata.o $(BUILD)/fat32.o $(BUILD)/vfs.o $(BUILD)/keyboard.o
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
+
+$(BUILD)/keyboard.o: kernel/drivers/keyboard.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -c kernel/drivers/keyboard.c -o $@
 
 $(BUILD)/vfs.o: kernel/fs/vfs.c
 	mkdir -p $(BUILD)

@@ -14,6 +14,7 @@
 #include "drivers/ata.h"
 #include "fs/fat32.h"
 #include "fs/vfs.h"
+#include "drivers/keyboard.h"
 
 void irq_install(void);
 
@@ -259,6 +260,8 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     // kprintf("Starting PREEMPTIVE scheduler (no yields)...\n");
     // kprintf("Testing Ring 3 transition...\n");
     // kprintf("Creating two kernel tasks in separate address space...\n");
+    #if 0   // --- Day 6a: temporarily bypass the scheduler to test the keyboard alone ---
+    
     struct task* ta = task_create(task_a);
     struct task* tb = task_create(task_b);
     // kprintf("Task A id=%d pml4=%p | Task B id=%d pml4=%p | kernel pml4=%p\n", ta->id, (void*)tb->pml4, (void*)vmm_kernel_pml4());
@@ -279,6 +282,17 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
 
     __asm__ volatile ("sti");               //ake sure interrupts are on
     for (;;) __asm__ volatile ("hlt");      //boot task idles; timer drives switching
+    #endif
+
+    kprintf("\nKeyboard test — type a line and press Enter (backspace works):\n> ");
+    __asm__ volatile ("sti");            // enable interrupts so the keyboard IRQ fires
+    char line[128];
+    for (;;) {
+        if (keyboard_poll_line(line, sizeof(line))) {
+            kprintf("you typed: \"%s\"\n> ", line);
+        }
+        __asm__ volatile ("hlt");        // sleep until the next interrupt
+    }
 
     while(sched_has_other_runnable())
         yield();
