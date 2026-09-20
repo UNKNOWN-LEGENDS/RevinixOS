@@ -52,9 +52,14 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
         $(BUILD)/sched.o $(BUILD)/context_switch.o $(BUILD)/task_entry.o \
         $(BUILD)/usermode.o $(BUILD)/syscall.o $(BUILD)/syscall_entry.o \
         $(BUILD)/user_program.o $(BUILD)/elf.o \
-		$(BUILD)/ata.o $(BUILD)/fat32.o $(BUILD)/vfs.o $(BUILD)/keyboard.o
+		$(BUILD)/ata.o $(BUILD)/fat32.o $(BUILD)/vfs.o $(BUILD)/keyboard.o \
+		$(BUILD)/shell.o
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
+
+$(BUILD)/shell.o: kernel/shell.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -c kernel/shell.c -o $@
 
 $(BUILD)/keyboard.o: kernel/drivers/keyboard.c
 	mkdir -p $(BUILD)
@@ -181,6 +186,7 @@ disk.img: userland/hello.elf
 	qemu-img create -f raw disk.img 16M
 	mkfs.vfat -F 32 -n REVINIX disk.img
 	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
+	mcopy -i disk.img userland/readme.txt ::/README.TXT
 
 myos.iso: $(ISO_DIR)/boot/kernel.bin
 	grub-mkrescue -o myos.iso $(ISO_DIR)

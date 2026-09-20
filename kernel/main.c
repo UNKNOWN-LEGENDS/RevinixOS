@@ -15,6 +15,7 @@
 #include "fs/fat32.h"
 #include "fs/vfs.h"
 #include "drivers/keyboard.h"
+#include "shell.h"
 
 void irq_install(void);
 
@@ -124,7 +125,9 @@ extern uint8_t user_program_end[];
 //     jump_usermode(entry, user_stack_top);
 // }
 
-static struct task* spawn_user_process(const uint8_t* image, uint64_t size) {
+struct fat32_fs g_fs;
+
+struct task* spawn_user_process(const uint8_t* image, uint64_t size) {
     uint64_t pml4 = vmm_create_address_space();
     uint64_t entry = elf_load(pml4, image, size);
     if (!entry) { kprintf("ELF load failed.\n"); return NULL; }
@@ -286,6 +289,7 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
 
     kprintf("\nKeyboard test — type a line and press Enter (backspace works):\n> ");
     __asm__ volatile ("sti");            // enable interrupts so the keyboard IRQ fires
+    shell_run();
     char line[128];
     for (;;) {
         if (keyboard_poll_line(line, sizeof(line))) {
