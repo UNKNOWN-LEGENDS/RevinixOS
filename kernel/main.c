@@ -299,5 +299,6 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
 
     (void)mb2_magic;
     __asm__ volatile ("sti");      //interrupts on: keyboard + timer
+    vga_clear();
     shell_run();                            //interactive shell - never returns
 }

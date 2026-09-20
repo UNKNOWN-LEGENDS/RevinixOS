@@ -2,6 +2,15 @@
 #include "drivers/serial.h"
 #include<stdint.h>
 #include<stdarg.h>
+#include "drivers/vga.h"
+
+static void emit_char(char c) {
+    serial_write_char(c);
+    vga_putc(c);
+}
+static void emit_str(const char* s) {
+    for (int i = 0; s[i]; i++) emit_char(s[i]);
+}
 
 //print an unsigned number in the given base (10 or 16)
 static void print_uint(uint64_t value, int base) {
