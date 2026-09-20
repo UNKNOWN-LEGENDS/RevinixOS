@@ -212,33 +212,33 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
 
     disk_test();
 
-    struct fat32_fs fs;
-    int fs_ok = (fat32_init(&fs) == 0);
+    // struct fat32_fs fs;
+    int fs_ok = (fat32_init(&g_fs) == 0);
     if (fs_ok) {
         kprintf("fat32: geometry parsed successfully.\n");
 
         // Walk the root directory's cluster chain from root_cluster to EOC.
-        kprintf("fat32: walking root-dir chain from cluster %d:\n", (int)fs.root_cluster);
-        uint32_t c = fs.root_cluster;
+        kprintf("fat32: walking root-dir chain from cluster %d:\n", (int)g_fs.root_cluster);
+        uint32_t c = g_fs.root_cluster;
         int guard = 0;
         while (c < FAT32_EOC && c >= 2) {
             kprintf("   cluster %d\n", (int)c);
-            c = fat32_next_cluster(&fs, c);
+            c = fat32_next_cluster(&g_fs, c);
             if (++guard > 64) { kprintf("   (guard hit — chain too long, stopping)\n"); break; }
         }
         kprintf("fat32: end of chain (last next=%p)\n", (void*)(uint64_t)c);
 
-        vfs_mount(&fs);
+        vfs_mount(&g_fs);
 
-        fat32_list_root(&fs);
+        fat32_list_root(&g_fs);
 
         struct fat32_file f;
-        if (fat32_find(&fs, "HELLO.ELF", &f) == 0) {
+        if (fat32_find(&g_fs, "HELLO.ELF", &f) == 0) {
             kprintf("fat32: found HELLO.ELF -> start_cluster=%d, size=%d bytes\n",
                     (int)f.start_cluster, (int)f.size);
 
             uint8_t* filebuf = (uint8_t*)kmalloc(f.size);
-            if (filebuf && fat32_read_file(&fs, &f, filebuf, f.size) == (int)f.size) {
+            if (filebuf && fat32_read_file(&g_fs, &f, filebuf, f.size) == (int)f.size) {
                 kprintf("fat32: read %d bytes. ELF magic: %x %x %x %x\n",
                         (int)f.size, filebuf[0], filebuf[1], filebuf[2], filebuf[3]);
             } else {

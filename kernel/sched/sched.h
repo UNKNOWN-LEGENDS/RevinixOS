@@ -22,5 +22,6 @@ void schedule(void);                                //pick next task and switch
 void yield(void);                                   //cooperative hand-off
 void task_exit(void);                               //end current task
 int sched_has_other_runnable(void);                //for the boot loop
+void task_reap(struct task* t);     //unlink a DONE task from the run queue and free it
 
 #endif

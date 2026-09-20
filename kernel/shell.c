@@ -52,21 +52,20 @@ static void cmd_cat(const char* name) {
 static void cmd_run(const char* name) {
     struct vfs_file f;
     if (vfs_open(name, &f) != 0) { kprintf("run: '%s' not found\n", name); return; }
-
     uint8_t* image = (uint8_t*)kmalloc(f.size);
     if (!image) { kprintf("run: out of memory\n"); return; }
     if (vfs_read(&f, image, f.size) != (int)f.size) { kprintf("run: read error\n"); kfree(image); return; }
-
     struct task* proc = spawn_user_process(image, f.size);
-    kfree(image);                       // elf_load already copied the segments out
+    kfree(image);
     if (!proc) { kprintf("run: failed to start '%s'\n", name); return; }
-
     kprintf("run: started '%s' (task %d)\n", name, proc->id);
 
-    // Drive the scheduler from the boot context until the process exits.
     while (proc->state != TASK_DONE)
-        yield();
+    yield();
 
+    task_reap(proc);
+
+    // kprintf("run: '%s' finished.\n", name);
     kprintf("run: '%s' finished.\n", name);
 }
 
@@ -77,6 +76,7 @@ void shell_run(void) {
 
     for (;;) {
         if (keyboard_poll_line(line, sizeof(line))) {
+            kprintf("[dbg] raw line: '%s'\n", line);
             char* arg = split_arg(line);      // line now holds just the command word
 
             if (line[0] == '\0')          { /* empty line */ }

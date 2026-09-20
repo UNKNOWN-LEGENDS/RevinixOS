@@ -15,6 +15,19 @@ static struct task* current   = NULL;
 static struct task* task_list = NULL;   // circular
 static int next_id = 0;
 
+void task_reap(struct task* t) {
+    if (!t || t == task_list) return;   // never reap the boot task
+
+    __asm__ volatile ("cli");           // timer walks this list; edit atomically
+    struct task* p = task_list;
+    while (p->next != t && p->next != task_list) p = p->next;
+    if (p->next == t) p->next = t->next;   // splice t out
+    __asm__ volatile ("sti");
+
+    kfree(t->stack_base);
+    kfree(t);
+}
+
 // Register the currently-executing boot context as the first task.
 // It already runs on a real stack, so it needs no primed stack.
 void sched_init(void) {

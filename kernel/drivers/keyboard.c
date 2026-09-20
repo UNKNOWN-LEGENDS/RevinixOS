@@ -75,10 +75,12 @@ void keyboard_handle_scancode(uint8_t scancode) {
 }
 
 int keyboard_poll_line(char* out, uint32_t out_size) {
-    if (!line_ready) return 0;
+    __asm__ volatile ("cli");
+    if (!line_ready) { __asm__ volatile ("sti"); return 0; }
     uint32_t i = 0;
     for (; ready_line[i] != '\0' && i < out_size - 1; i++) out[i] = ready_line[i];
     out[i] = '\0';
     line_ready = 0;
+    __asm__ volatile ("sti");
     return 1;
 }
