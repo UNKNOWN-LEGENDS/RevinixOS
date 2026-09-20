@@ -19,23 +19,6 @@
 
 void irq_install(void);
 
-static void task_a(void) {
-    int count = 0;
-    for (;;) {
-        uint64_t cr3; __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
-        kprintf("   [Task A] count=%d cr3=%p\n", count++, (void*)cr3);
-        for (volatile int d = 0; d < 20000000; d++);   // burn time, no yield
-    }
-}
-static void task_b(void) {
-    int count = 0;
-    for (;;) {
-        uint64_t cr3; __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
-        kprintf("   [Task B] count=%d cr3=%p\n", count++, (void*)cr3);
-        for (volatile int d = 0; d < 20000000; d++);
-    }
-}
-
 extern void jump_usermode(uint64_t entry, uint64_t user_stack);
 
 extern uint8_t user_program_start[];
@@ -263,80 +246,58 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     // kprintf("Starting PREEMPTIVE scheduler (no yields)...\n");
     // kprintf("Testing Ring 3 transition...\n");
     // kprintf("Creating two kernel tasks in separate address space...\n");
-    #if 0   // --- Day 6a: temporarily bypass the scheduler to test the keyboard alone ---
-    
-    struct task* ta = task_create(task_a);
-    struct task* tb = task_create(task_b);
-    // kprintf("Task A id=%d pml4=%p | Task B id=%d pml4=%p | kernel pml4=%p\n", ta->id, (void*)tb->pml4, (void*)vmm_kernel_pml4());
-    // kprintf("Starting preemptive scheduler (CR3 swaps per task)...\n");
-    kprintf("Step C: preempting a Ring 3 process alongside a kernel task...\n");
-    uint64_t elf_size;
-    uint8_t* image = fs_ok ? load_program("HELLO.ELF", &elf_size) : NULL;
-    struct task* up = image ? spawn_user_process(image, elf_size) : NULL;
-    if (image) kfree(image);
-    if (!up) { kprintf("Failed to spawn user process from filesystem.\n");
-               for (;;) __asm__ volatile ("hlt"); }
-    struct task* ka = task_create(task_a);
-    // kprintf("User process task id=%d pml4=%p\n", up->id, (void*)up->pml4);
-    // kprintf("Starting scheduler; the timer will switch into Ring 3...\n");
-    kprintf("user id=%d pml4=%p | kernel task id=%d pml4=%p\n", up->id, (void*)up->pml4, ka->id, (void*)ka->pml4);
-    kprintf("Starting scheduler...\n");
-    //unreachable
 
-    __asm__ volatile ("sti");               //ake sure interrupts are on
-    for (;;) __asm__ volatile ("hlt");      //boot task idles; timer drives switching
-    #endif
+    // kprintf("\nKeyboard test — type a line and press Enter (backspace works):\n> ");
+    // __asm__ volatile ("sti");            // enable interrupts so the keyboard IRQ fires
+    // shell_run();
+    // char line[128];
+    // for (;;) {
+    //     if (keyboard_poll_line(line, sizeof(line))) {
+    //         kprintf("you typed: \"%s\"\n> ", line);
+    //     }
+    //     __asm__ volatile ("hlt");        // sleep until the next interrupt
+    // }
 
-    kprintf("\nKeyboard test — type a line and press Enter (backspace works):\n> ");
-    __asm__ volatile ("sti");            // enable interrupts so the keyboard IRQ fires
-    shell_run();
-    char line[128];
-    for (;;) {
-        if (keyboard_poll_line(line, sizeof(line))) {
-            kprintf("you typed: \"%s\"\n> ", line);
-        }
-        __asm__ volatile ("hlt");        // sleep until the next interrupt
-    }
+    // while(sched_has_other_runnable())
+    //     yield();
 
-    while(sched_has_other_runnable())
-        yield();
+    // kprintf("All tasks done. Back in boot context \n");
 
-    kprintf("All tasks done. Back in boot context \n");
+    // // --- test the heap ---
+    // char* a = (char*)kmalloc(32);
+    // char* b = (char*)kmalloc(100);
+    // char* c = (char*)kmalloc(8);
+    // kprintf("kmalloc gave: a=%p b=%p c=%p\n", a, b, c);
 
-    // --- test the heap ---
-    char* a = (char*)kmalloc(32);
-    char* b = (char*)kmalloc(100);
-    char* c = (char*)kmalloc(8);
-    kprintf("kmalloc gave: a=%p b=%p c=%p\n", a, b, c);
+    // //write to them to prove they're real, independent memory
+    // for(int i=0; i<31; i++) a[i] = 'A';
+    // a[31] = '\0';
+    // kprintf("a=%s\n", a);
 
-    //write to them to prove they're real, independent memory
-    for(int i=0; i<31; i++) a[i] = 'A';
-    a[31] = '\0';
-    kprintf("a=%s\n", a);
+    // kfree(b);                                   //free the middle one
+    // char* d = (char*)kmalloc(64);
+    // kprintf("after freeing b, kmalloc(64 gave: d=%p\n", d);
 
-    kfree(b);                                   //free the middle one
-    char* d = (char*)kmalloc(64);
-    kprintf("after freeing b, kmalloc(64 gave: d=%p\n", d);
+    // kfree(a); kfree(c); kfree(d);
+    // kprintf("Freed all. Heap state: \n");
+    // heap_dump();                            //should coalesce back toward one big block
 
-    kfree(a); kfree(c); kfree(d);
-    kprintf("Freed all. Heap state: \n");
-    heap_dump();                            //should coalesce back toward one big block
+    // // --- test map_page + translation on an unused higher-half address ---
+    // uint64_t phys = pmm_alloc_frame();
+    // uint64_t test_virt = 0xFFFFFF8000000000ull;    // PML4 slot 511, unused
+    // vmm_map_page(test_virt, phys, PAGE_WRITABLE);
 
-    // --- test map_page + translation on an unused higher-half address ---
-    uint64_t phys = pmm_alloc_frame();
-    uint64_t test_virt = 0xFFFFFF8000000000ull;    // PML4 slot 511, unused
-    vmm_map_page(test_virt, phys, PAGE_WRITABLE);
+    // volatile uint64_t* p = (volatile uint64_t*)test_virt;
+    // *p = 0xCAFEBABEDEADBEEFull;
+    // kprintf("VMM test: wrote/read back %p\n", (void*)*p);
+    // kprintf("VMM test: virt %p -> phys %p (allocated %p)\n",
+    //         (void*)test_virt, (void*)vmm_get_phys(test_virt), (void*)phys);
 
-    volatile uint64_t* p = (volatile uint64_t*)test_virt;
-    *p = 0xCAFEBABEDEADBEEFull;
-    kprintf("VMM test: wrote/read back %p\n", (void*)*p);
-    kprintf("VMM test: virt %p -> phys %p (allocated %p)\n",
-            (void*)test_virt, (void*)vmm_get_phys(test_virt), (void*)phys);
-
-    // --- test HHDM access to the same physical frame ---
-    volatile uint64_t* h = (volatile uint64_t*)phys_to_virt(phys);
-    kprintf("VMM test: same frame via HHDM reads %p\n", (void*)*h);
+    // // --- test HHDM access to the same physical frame ---
+    // volatile uint64_t* h = (volatile uint64_t*)phys_to_virt(phys);
+    // kprintf("VMM test: same frame via HHDM reads %p\n", (void*)*h);
 
     (void)mb2_magic;
-    for (;;) __asm__ volatile ("hlt");
+    for (;;) __asm__ volatile ("sti");      //interrupts on: keyboard + timer
+    shell_run();                            //interactive shell - never returns
 }

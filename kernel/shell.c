@@ -76,7 +76,7 @@ void shell_run(void) {
 
     for (;;) {
         if (keyboard_poll_line(line, sizeof(line))) {
-            kprintf("[dbg] raw line: '%s'\n", line);
+            // kprintf("[dbg] raw line: '%s'\n", line);
             char* arg = split_arg(line);      // line now holds just the command word
 
             if (line[0] == '\0')          { /* empty line */ }
