@@ -298,6 +298,6 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     // kprintf("VMM test: same frame via HHDM reads %p\n", (void*)*h);
 
     (void)mb2_magic;
-    for (;;) __asm__ volatile ("sti");      //interrupts on: keyboard + timer
+    __asm__ volatile ("sti");      //interrupts on: keyboard + timer
     shell_run();                            //interactive shell - never returns
 }
