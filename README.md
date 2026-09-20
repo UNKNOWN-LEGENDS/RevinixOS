@@ -1,8 +1,8 @@
 # RevinixOS
 
-A ground-up x86-64 operating system kernel, written from scratch in C and NASM assembly — not a Linux fork, not a config of an existing kernel — targeting hardware the industry has declared obsolete.
+A ground-up x86-64 operating system kernel, written from scratch in C and NASM assembly — not a Linux fork, not a configuration of an existing kernel — targeting hardware the industry has declared obsolete.
 
-> **Status:** Stage 1 (custom kernel) in active development. Ring 3 user mode, syscalls, and an ELF64 loader are working end-to-end in QEMU. Currently building per-process address spaces on a freshly-relinked higher-half kernel.
+> **Status: Stage 1 complete.** The kernel boots, manages memory, runs isolated preemptive processes in user mode, mounts a real FAT32 filesystem, and drops into an **interactive shell** that lists, reads, and executes programs off the disk by name — rendered on-screen, in QEMU's display, with a live keyboard.
 
 ---
 
@@ -16,74 +16,99 @@ Two problems, addressed together:
 **RevinixOS aims at the intersection:** light enough for a decade-old laptop, and eventually capable of running Windows productivity software via API translation (not emulation), through a familiar interface usable by non-technical people out of the box.
 
 **Two stages:**
-- **Stage 1 (current):** an original x86-64 monolithic kernel, written from scratch, to actually learn where resource costs live on constrained hardware — something you can't learn by configuring someone else's kernel.
-- **Stage 2 (planned):** evolve into a full Linux-based distribution — Wine translation layer, HDD-tuned I/O, a lightweight desktop — built on top of the systems knowledge from Stage 1.
+- **Stage 1 (this repository — complete):** an original x86-64 monolithic kernel, written from scratch, to actually learn where resource costs live on constrained hardware — something you can't learn by configuring someone else's kernel.
+- **Stage 2 (planned):** evolve into a full Linux-based distribution — Wine translation layer, HDD-tuned I/O, a lightweight desktop — built on the systems knowledge from Stage 1.
 
 **Target hardware profile:** x86-64, single/dual core, 1 GB RAM design floor, mechanical HDD (no SSD assumed), no discrete GPU, legacy BIOS boot.
 
 ---
 
+## Demo, in one path
+
+Boot the kernel and you land at a shell running on the machine's own screen:
+
+```
+RevinixOS shell. Type 'help'.
+$ ls
+   HELLO.ELF   (cluster 3, 4872 bytes)
+   README.TXT  (cluster 13, 122 bytes)
+$ cat README.TXT
+RevinixOS: a kernel written from scratch.
+$ run HELLO.ELF
+run: started 'HELLO.ELF' (task 1)
+[user] ring3 tick
+... (runs in an isolated Ring 3 process, preempted by the timer) ...
+run: 'HELLO.ELF' finished.
+$
+```
+
+`run` loads an ELF executable **off the FAT32 filesystem by name**, into its **own isolated virtual address space**, executes it in **user mode (Ring 3)** where it's **preempted by the timer**, and returns to the prompt when it exits. That single command exercises nearly every subsystem below.
+
+---
+
 ## What's implemented (Stage 1)
 
-Everything below is written, tested in QEMU, and committed. Each subsystem was built and proven in isolation before the next was added — see [Development Methodology](#development-methodology).
+Everything below is written from scratch, tested in QEMU, and committed. Each subsystem was built and **proven in isolation** before the next was layered on — see [Development methodology](#development-methodology).
 
-| # | Subsystem | Notes |
-|---|---|---|
-| 1 | Toolchain & build pipeline | Cross-compiler (`x86_64-elf-gcc`/`binutils`) built from source; Makefile; `grub-mkrescue` ISO pipeline |
-| 2 | Multiboot2 boot | GRUB loads the kernel at 1 MB |
-| 3 | Long mode (64-bit) | CPUID feature checks → PAE → PML4/PDPT/PD with 2 MB huge pages → EFER.LME → CR0.PG → far jump into 64-bit |
-| 4 | Serial output + `kprintf` | 16550 UART driver (polled), custom `printf`-style formatter (`%s %d %x %c %p`) — all kernel diagnostics go over serial |
-| 5 | GDT + TSS | Flat segmentation, 64-bit TSS descriptor, dedicated privilege-transition stack (`rsp0`) |
-| 6 | IDT + exception handling | All 256 vectors installed, uniform interrupt-frame handling, page-fault `CR2` reporting |
-| 7 | PIC remap + PIT + keyboard IRQ | 8259 remapped off the exception vectors, 100 Hz timer tick, raw scancode capture |
-| 8 | Physical memory manager | Multiboot2 memory-map parsing, bitmap frame allocator |
-| 9 | Virtual memory manager | Custom 4-level page tables, identity map, higher-half direct map (HHDM) for physical RAM access |
-| 10 | VGA text-mode driver | Direct framebuffer writes at `0xB8000` |
-| 11 | Kernel heap | Free-list allocator with splitting and bidirectional coalescing (`kmalloc`/`kfree`) |
-| 12 | Cooperative scheduler | Context switch saving callee-saved registers, circular run queue |
-| 13 | Preemptive scheduler | Timer-IRQ-driven `schedule()`, correct EOI ordering, safe entry path for freshly-created tasks |
-| 14 | Ring 3 (user mode) | Faked `iretq` frames, privilege-level GDT selectors, verified kernel-stack switch on trap-in |
-| 15 | Syscall interface | `int 0x80` gate, register-based calling convention, working `write`/`exit` |
-| 16 | ELF64 loader | Parses ELF headers, loads `PT_LOAD` segments, zero-fills `.bss`, hands off to Ring 3 |
-| 17 | **Higher-half kernel relink** | Kernel now links at `0xFFFFFFFF80000000` (PML4 entry 511), freeing the lower half of the address space for per-process user mappings |
+### Boot & CPU
+- Multiboot2 boot via GRUB; 32-bit → **long mode (64-bit)** transition (CPUID checks → PAE → 4-level paging → EFER.LME)
+- **Higher-half kernel**: relinked to `0xFFFFFFFF80000000` (loaded low, run high via a linker VMA/LMA split) — the standard foundation for per-process address-space isolation
+- GDT + TSS, a full IDT with exception handlers (page-fault `CR2` reporting), and 8259 PIC / PIT / IRQ handling
 
-**Proven end-to-end:** a standalone ELF binary is loaded to `0x100000000`, executed in **Ring 3**, prints through a `sys_write` syscall, and exits cleanly through `sys_exit` — from a kernel now running entirely out of the higher half of the virtual address space.
+### Memory
+- **Physical memory manager** — parses the Multiboot2 memory map; bitmap frame allocator
+- **Virtual memory manager** — custom 4-level page tables, a higher-half direct map (HHDM) of all physical RAM, per-address-space mapping primitives
+- **Kernel heap** — free-list allocator with block splitting and bidirectional coalescing
 
-### In progress / next
-Per-process address spaces → FPU/SSE state save-restore (required for compiled C in userspace) → CR3-switching process model → ATA PIO disk driver → VFS → FAT32/ext2 → PS/2 keyboard driver → expanded POSIX-style syscalls → interactive shell (Stage 1 completion criterion).
+### Processes & scheduling
+- **Preemptive, timer-driven scheduler** — cooperative context switching proven first, then extended to preemption
+- **Per-process isolated address spaces** — each process gets its own PML4; the kernel half is shared across all of them by reference; the scheduler swaps CR3 (and per-task `rsp0`) on every context switch
+- **Ring 3 user mode**, a **custom `int 0x80` syscall interface**, and an **ELF64 loader** that loads program segments into a target address space
+- **Full Ring 3 preemption** — a looping user process is preempted mid-execution by the timer and correctly resumed, its complete register state preserved across the switch, interleaved with a separate kernel task in a different address space
+
+### Storage & filesystem
+- **ATA PIO disk driver** — LBA28 sector read/write over programmed I/O (round-trip verified)
+- **FAT32 filesystem (read path)** — boot-sector/BPB parsing, FAT cluster-chain walking, root-directory parsing, 8.3 filename lookup, and reading files by their true size
+- **VFS layer** — a thin `open`/`read` abstraction (operations table) so the rest of the kernel opens files generically; the filesystem sits behind the interface and callers never name FAT32
+
+### Interface
+- **PS/2 keyboard driver** — scancode→ASCII translation, shift handling, backspace, line buffering
+- **VGA text output** — direct framebuffer rendering with scrolling and a hardware cursor that tracks typing; kernel output is mirrored to both the screen and a serial debug channel
+- **Interactive shell** — `ls`, `cat <file>`, `run <file>`, `help`; `run` launches a program, waits for it to exit, reaps the finished task, and returns to the prompt
 
 ---
 
 ## Key design decisions
 
-| Decision | Choice made | Why | Planned evolution |
+| Decision | Choice | Why | Planned evolution |
 |---|---|---|---|
-| Kernel architecture | Monolithic | Lower overhead on a weak single core; no IPC tax; simpler integration with a future translation layer | — |
+| Kernel architecture | Monolithic | Lower overhead on a weak single core; no IPC tax | — |
 | Physical allocator | Bitmap | Simple, verifiable, unblocks paging immediately | → buddy allocator |
 | Heap allocator | Free-list | Correct `kmalloc`/`kfree` with minimal code | → slab allocator |
-| Page-table access | Higher-half direct map (HHDM) | Generalizes better than recursive page-table mapping | — |
-| Scheduling | Cooperative → preemptive | Proved the context-switch mechanism in isolation before adding interrupt-driven preemption | → priority scheduling / CFS-style (Stage 2) |
-| Syscall mechanism | `int 0x80` | Far easier to debug than `syscall`/`sysret` while the kernel is young | → fast `syscall` instruction |
-| Kernel linking | Higher-half (`0xFFFFFFFF80000000`) | Standard prerequisite for per-process address-space isolation | — |
+| Page-table access | Higher-half direct map (HHDM) | Generalizes better than recursive mapping | — |
+| Scheduling | Cooperative → preemptive | Proved the switch mechanism before adding preemption | → priorities / fairness |
+| Syscalls | `int 0x80` | Far easier to debug than `syscall`/`sysret` while young | → fast `syscall` |
+| Filesystem | FAT32, read-only | Standard, host-tooling-friendly; a real FS to build the VFS on | → read/write, subdirs, long names |
+| Filesystem access | VFS operations table | The loader/shell depend on the interface, not the FS | → multiple backends (e.g. ext2) |
 
-Interfaces are deliberately kept stable across upgrades — `pmm_alloc_frame`/`pmm_free_frame` and `kmalloc`/`kfree` will keep identical signatures when the buddy and slab allocators land.
+Interfaces are deliberately kept stable across upgrades — `pmm_alloc_frame`/`kmalloc`/`vfs_read` keep their signatures when the allocator or filesystem behind them is replaced.
 
 ---
 
 ## Development methodology
 
-This isn't built by dumping large amounts of generated code — it's built one subsystem at a time, deliberately:
+This isn't built by generating large amounts of code at once — it's built one subsystem at a time, deliberately:
 
-1. Design the mechanism and reason through it before writing code.
+1. Design and reason through the mechanism before writing code.
 2. Implement exactly one subsystem.
 3. Define the expected output and what each line of it proves.
-4. Build and test in QEMU; verify against the expected output.
-5. Debug from real serial/QEMU output — not from theory.
+4. Build and test in QEMU; verify against the expectation.
+5. Debug from real serial/QEMU fault output — not from theory.
 6. Commit the working state before moving on.
 
-Concrete examples of proving one mechanism before stacking the next on top: cooperative scheduling was verified before preemption was layered onto the same context-switch code; the Ring 3 transition was proven with a hand-assembled 2-instruction spin loop before any syscalls existed; the ELF loader was proven against a binary embedded directly in the kernel image before any disk or filesystem code existed.
+Each risky mechanism was proven alone before the next stacked on it: cooperative scheduling before preemption; the Ring 3 transition (via a hand-assembled spin loop) before syscalls existed; the ELF loader (on an embedded binary) before any disk; the CR3-swap plumbing (with kernel tasks) before Ring 3 processes were scheduled; the keyboard input layer (echoing lines) before a shell parsed them.
 
-This discipline directly paid off — every bug found so far (double faults, a physical-memory-manager bitmap overlapping the multiboot2 info structure, preemption silently dying after one context switch, a GDT selector RPL mismatch) was root-caused by isolating exactly which single new mechanism could have caused it, then confirming with `objdump` disassembly and `qemu -d int -no-reboot` fault dumps rather than by guessing.
+That discipline paid off directly. Every bug found across the project — double faults, a physical-memory bitmap overlapping the boot-info structure, preemption silently dying after one context switch, a GDT selector privilege mismatch, a 1 MB virtual-memory mapping offset, a keyboard/IRQ data race, drawing to video memory before it was mapped — was root-caused by isolating exactly which single new mechanism could have caused it, then confirming with `objdump` disassembly and `qemu -d int -no-reboot` fault dumps rather than by guessing.
 
 ---
 
@@ -91,34 +116,32 @@ This discipline directly paid off — every bug found so far (double faults, a p
 
 | Layer | Tooling |
 |---|---|
-| Languages | C (freestanding, `-ffreestanding -nostdlib`), x86-64 assembly (NASM) |
+| Languages | C (freestanding, `-ffreestanding -nostdlib -mcmodel=kernel`), x86-64 assembly (NASM) |
 | Cross-compiler | `x86_64-elf-gcc` + `x86_64-elf-binutils`, built from source |
-| Assembler | NASM (`-f elf64`) |
-| Boot | GRUB2, Multiboot2 protocol, `grub-mkrescue`, `xorriso`, `mtools` |
-| Test/debug targets | QEMU (`qemu-system-x86_64`), GDB, Bochs |
+| Boot | GRUB2, Multiboot2, `grub-mkrescue`, `xorriso` |
+| Filesystem tooling | `mkfs.vfat` (dosfstools), `mcopy`/`mdir` (mtools) — host-side FAT32 image creation |
+| Test / debug | QEMU (`qemu-system-x86_64`), GDB, Bochs |
 | Build | GNU Make, custom linker scripts |
-| Host environment | Windows + WSL2 (Ubuntu) |
 | Version control | Git |
-
-**Planned Stage 2 stack:** musl, BusyBox, runit, Wayland/Sway or Openbox, LXQt, PipeWire, Wine-Staging, WineD3D + lavapipe (software Vulkan — no GPU assumed), BFQ I/O scheduler, zram, ext4.
 
 ---
 
 ## Repository layout
 
 ```
-boot/                   boot.asm — multiboot2 header + long-mode/higher-half trampoline
+boot/boot.asm            multiboot2 header + long-mode / higher-half trampoline
 kernel/
-  arch/x86_64/          GDT, IDT, PIC/IRQ, ISR stubs, Ring 3 entry
-  mm/                   physical memory manager, virtual memory manager, kernel heap
-  sched/                scheduler, context switch, task entry trampoline
+  arch/x86_64/           GDT, IDT, PIC/IRQ, ISR stubs, Ring 3 entry, port I/O
+  mm/                    physical + virtual memory managers, kernel heap
+  sched/                 scheduler, context switch, task entry
   syscall/               int 0x80 dispatcher
-  drivers/               serial (UART), VGA text mode
+  drivers/               serial (UART), VGA text, ATA disk, PS/2 keyboard
+  fs/                    FAT32 driver, VFS layer
   user/                  ELF64 loader
-  kprintf.c/h            kernel printf
-  main.c                 kernel entry point
-userland/               standalone user-mode ELF test program + its own linker script
-linker.ld               kernel linker script (higher-half VMA/LMA split)
+  shell.c                interactive shell
+  kprintf.c, main.c      kernel printf (serial + VGA), entry point
+userland/                standalone user-mode ELF program + linker script
+linker.ld                kernel linker script (higher-half VMA/LMA split)
 Makefile
 ```
 
@@ -126,27 +149,44 @@ Makefile
 
 ## Building and running
 
-Requires a `x86_64-elf` cross-toolchain, NASM, QEMU, and GRUB tools (`grub-mkrescue`, `xorriso`, `mtools`) — developed and tested under WSL2 (Ubuntu).
+Requires an `x86_64-elf` cross-toolchain, NASM, QEMU, GRUB tools (`grub-mkrescue`, `xorriso`), and FAT tooling (`dosfstools`, `mtools`).
 
 ```bash
-make clean && make run
+rm -f disk.img && make clean && make run
 ```
 
-This builds the kernel, generates a bootable ISO via GRUB, and launches it in QEMU. **All kernel diagnostics are printed over the serial port**, so the terminal running `make run` is where the real output appears — the QEMU graphical window is expected to stay blank aside from VGA text output.
+This builds the kernel, generates a bootable ISO, creates and FAT32-formats a disk image (placing the user program and a text file in its root), and launches QEMU with the ISO as boot media and the disk image as a writable ATA drive.
+
+- **The shell runs in the QEMU graphical window** — click into it and type (`help`, `ls`, `cat README.TXT`, `run HELLO.ELF`).
+- **Kernel diagnostics also stream to the serial console** (the terminal running `make run`), which doubles as the debugging channel.
 
 For fault debugging:
 ```bash
-qemu-system-x86_64 -cdrom myos.iso -serial stdio -d int -no-reboot
+qemu-system-x86_64 -cdrom myos.iso -drive file=disk.img,format=raw,if=ide -boot order=d -serial stdio -d int -no-reboot
 ```
+
+---
+
+## Roadmap
+
+Stage 1 is complete. Known limitations are tracked deliberately, not hidden — the honest edges are the roadmap:
+
+- **Filesystem is read-only**, root-directory-only, 8.3-short-names-only. Write support (enabling `touch`/`cp`/`mv`), subdirectories, and long filenames are the next filesystem arc.
+- **Syscall user-pointer validation** is not yet implemented — the one deliberate security gap before running untrusted code.
+- **FPU/SSE state is not saved on context switch**, so compiled-C user programs aren't safe yet (current user programs are hand-written assembly).
+- Allocators are the simple-but-correct versions (bitmap PMM, free-list heap); buddy/slab replacements are planned behind the same interfaces.
+- Real-hardware bring-up (ATA drive detection, PS/2 controller init, APIC) is deferred until the project moves off QEMU.
+
+**Stage 2** pivots to a Linux-based distribution with a Wine translation layer, HDD-tuned I/O, and a lightweight desktop.
 
 ---
 
 ## Academic context
 
-Developed as a university project (Project Work Phase 1) under faculty guidance, with accompanying technical documentation and presentations tracking design decisions, debugging history, and known technical debt as the kernel grows.
+Developed as a university project (Project Work Phase 1) under faculty guidance, with accompanying technical documentation and presentations tracking design decisions, debugging history, and known technical debt as the kernel grew.
 
 ---
 
 ## License
 
-*No Valid License adopted yet. Will update it very soon - Creator, UNKNOWN-LEGENDS*
+*(Add a license here — MIT / GPL / BSD, whichever fits your intentions for the project.)*
