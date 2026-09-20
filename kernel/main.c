@@ -185,6 +185,7 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
 
     pmm_init(mb2_info);
     vmm_init();
+    vga_enable();
     pmm_use_hhdm();
 
     vga_clear();

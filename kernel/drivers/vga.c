@@ -9,6 +9,10 @@
 //attribute byte: 0x0F = white text on black background
 #define VGA_COLOR 0x0F
 
+static int vga_ready = 0;
+
+void vga_enable(void) { vga_ready = 1; }
+
 static int cursor_row = 0;
 static int cursor_col = 0;
 
@@ -17,6 +21,7 @@ static uint16_t vga_entry(char c) {
 }
 
 void vga_clear(void) {
+    if (!vga_ready) return;
     for (int i=0; i<VGA_WIDTH * VGA_HEIGHT; i++) {
         VGA_MEM[i] = vga_entry(' ');
     }
@@ -60,6 +65,7 @@ static void vga_scroll(void) {
 
 // Emit one character to the screen, handling newline, backspace, and scroll.
 void vga_putc(char ch) {
+    if (!vga_ready) return;         //HHDM not mapped yet; skip screen output
     if (ch == '\n') {
         cursor_col = 0;
         cursor_row++;
