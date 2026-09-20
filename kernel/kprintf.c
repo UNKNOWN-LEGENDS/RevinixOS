@@ -19,7 +19,7 @@ static void print_uint(uint64_t value, int base) {
 	int i=0;
 
 	if (value == 0) {
-		serial_write_char('0');
+		emit_char('0');
 		return;
 	}
 	while (value > 0) {
@@ -27,13 +27,13 @@ static void print_uint(uint64_t value, int base) {
 		value/=base;
 	}
 	while (i > 0) {
-		serial_write_char(buf[--i]); //digits were generated in reverse
+		emit_char(buf[--i]); //digits were generated in reverse
 	}
 }
 
 static void print_int(int64_t value) {
 	if (value < 0) {
-		serial_write_char('-');
+		emit_char('-');
 		print_uint((uint64_t)(-value), 10);
 	} else {
 		print_uint((uint64_t)value, 10);
@@ -46,22 +46,22 @@ void kprintf(const char* fmt, ...) {
 
 	for (int i=0; fmt[i] != '\0'; i++) {
 		if (fmt[i] != '%') {
-			serial_write_char(fmt[i]);
+			emit_char(fmt[i]);
 			continue;
 		}
 		i++; //skip '%'
 		switch (fmt[i]) {
-			case 's': serial_write_string(va_arg(args, const char*)); break;
+			case 's': emit_str(va_arg(args, const char*)); break;
 			case 'd': print_int(va_arg(args, int)); break;
 			case 'x': print_uint(va_arg(args, unsigned int), 16); break;
-			case 'c': serial_write_char((char)va_arg(args, int)); break;
+			case 'c': emit_char((char)va_arg(args, int)); break;
 			case 'p': {
-				serial_write_string("0x");
+				emit_str("0x");
 				print_uint((uint64_t)va_arg(args, void*), 16);
 				break;
 			}
-			case '%': serial_write_char('%'); break;
-			default: serial_write_char('%'); serial_write_char(fmt[i]); break;
+			case '%': emit_char('%'); break;
+			default: emit_char('%'); emit_char(fmt[i]); break;
 		}
 	}
 	va_end(args);
