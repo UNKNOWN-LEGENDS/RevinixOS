@@ -11,4 +11,14 @@ void kfree(void* ptr);
 //diagnostics
 void heap_dump(void);
 
+struct heap_stats {
+    uint64_t capacity;
+    uint64_t used;
+    uint64_t free;
+    uint64_t blocks;
+    uint64_t largest_free;
+};
+
+void heap_get_stats(struct heap_stats* s);
+
 #endif

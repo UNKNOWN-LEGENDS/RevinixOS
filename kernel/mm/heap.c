@@ -110,3 +110,17 @@ void heap_dump(void) {
         cur = cur->next;
     }
 }
+
+void heap_get_stats(struct heap_stats* s) {
+    s->capacity = heap_end - HEAP_START;
+    s->used = s->free = s->blocks = s->largest_free = 0;
+    for (struct block_header* cur = heap_head; cur; cur = cur->next) {
+        s->blocks++;
+        if (cur->free) {
+            s->free += cur->size;
+            if (cur->size > ->largest_free) s->largest_free = cur->size;
+        } else {
+            s->used += cur->size;
+        }
+    }
+}
