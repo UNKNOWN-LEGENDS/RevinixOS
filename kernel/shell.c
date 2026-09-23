@@ -27,6 +27,12 @@ static char* split_arg(char* line) {
     return p;   // points at the trailing '\0' => empty arg
 }
 
+static void print_hex(uint64_t v, int digits) {
+    static const char hex[] = "0123456789abcdef";
+    for (int i = digits-1; i>=0; i--)
+        kprintf("%c", hex[(v >> (i * 4)) & 0xF]);
+}
+
 static void cmd_help(void) {
     kprintf("commands:\n");
     kprintf("  ls              list files in the root directory\n");
@@ -136,12 +142,6 @@ static void cmd_run(const char* name) {
     kprintf("run: '%s' finished.\n", name);
 }
 
-static void print_hex(uint64_t v, int digits) {
-    static const char hex[] = "0123456789abcdef";
-    for (int i = digits-1; i>=0; i--)
-        kprintf("%c", hex[(v >> (i * 4)) & 0xF]);
-}
-
 void shell_run(void) {
     char line[128];
     kprintf("\nRevinixOS shell. Type 'help'.\n");
@@ -158,9 +158,9 @@ void shell_run(void) {
             else if (str_eq(line, "cat"))  cmd_cat(arg);
             else if (str_eq(line, "run"))  cmd_run(arg);
             else if (str_eq(line, "clear")) cmd_clear();
-            else if (str_eq(line, "echo")) cmd_echo();
+            else if (str_eq(line, "echo")) cmd_echo(arg);
             else if (str_eq(line, "meminfo")) cmd_meminfo();
-            else if (str_eq(line, "hexdump")) cmd_hexdump();
+            else if (str_eq(line, "hexdump")) cmd_hexdump(arg);
             else kprintf("unknown command: '%s' (try 'help')\n", line);
 
             kprintf("$ ");
