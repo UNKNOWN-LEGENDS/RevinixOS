@@ -118,7 +118,7 @@ void heap_get_stats(struct heap_stats* s) {
         s->blocks++;
         if (cur->free) {
             s->free += cur->size;
-            if (cur->size > ->largest_free) s->largest_free = cur->size;
+            if (cur->size > s->largest_free) s->largest_free = cur->size;
         } else {
             s->used += cur->size;
         }
