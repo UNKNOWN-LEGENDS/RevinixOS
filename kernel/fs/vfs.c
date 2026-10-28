@@ -19,6 +19,10 @@ void vfs_mount(const struct fat32_fs* fs) {
     mounted = 1;
 }
 
+int vfs_is_mounted(void) {
+    return mounted;
+}
+
 int vfs_open(const char* name, struct vfs_file* out) {
     out->valid = 0;
     if (!mounted) { kprintf("vfs: no filesystem mounted\n"); return -1; }

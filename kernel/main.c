@@ -141,6 +141,10 @@ static uint8_t* load_program(const char* name, uint64_t* out_size) {
     return buf;
 }
 
+#ifdef REVINIX_DISK_TEST
+// Destructive write/read round-trip on LBA 100. Only built with
+//   make clean && make run EXTRA=-DREVINIX_DISK_TEST
+// NEVER build this for real hardware.
 static void disk_test(void) {
     uint8_t out[ATA_SECTOR_SIZE];
     uint8_t in[ATA_SECTOR_SIZE];
@@ -169,6 +173,7 @@ static void disk_test(void) {
         kprintf("disk: MISMATCH at byte %d (wrote %x, read %x)\n",
                 mismatch, out[mismatch], in[mismatch]);
 }
+#endif
 
 void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     serial_init();
@@ -194,10 +199,16 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
 
     heap_init();
 
-    disk_test();
+    int disk_ok = (ata_init() == 0);
+#ifdef REVINIX_DISK_TEST
+    if (disk_ok) {
+        ata_allow_writes(1);
+        disk_test();
+        ata_allow_writes(0);
+    }
+#endif
 
-    // struct fat32_fs fs;
-    int fs_ok = (fat32_init(&g_fs) == 0);
+    int fs_ok = disk_ok && (fat32_init(&g_fs) == 0);
     if (fs_ok) {
         kprintf("fat32: geometry parsed successfully.\n");
 

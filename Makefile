@@ -5,6 +5,7 @@ ASM := nasm
 #CFLAGS := -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -nostdlib -Wall -Wextra -c
 #CFLAGS := -ffreestanding -fno-stack-protector -fno-pic -mcmodel=kernel -mno-red-zone -nostdlib -Wall -Wextra -Ikernel -c
 CFLAGS := -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mcmodel=kernel -nostdlib -Wall -Wextra -Ikernel -c
+CFLAGS += $(EXTRA)
 LDFLAGS := -ffreestanding -nostdlib -T linker.ld -z max-page-size=0x1000
 
 BUILD := build

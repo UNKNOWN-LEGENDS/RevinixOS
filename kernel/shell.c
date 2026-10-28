@@ -107,6 +107,7 @@ static void cmd_hexdump(const char* name) {
 }
 
 static void cmd_ls(void) {
+    if (!vfs_is_mounted()) { kprintf("ls: no filesystem mounted\n"); return; }
     fat32_list_root(&g_fs);
 }
 

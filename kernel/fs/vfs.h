@@ -23,6 +23,9 @@ struct vfs_file {
 // Mount the (single) filesystem the VFS serves. Call once at boot.
 void vfs_mount(const struct fat32_fs* fs);
 
+// 1 if a filesystem is mounted, 0 otherwise.
+int vfs_is_mounted(void);
+
 // Open a file by bare name in the mounted filesystem's root.
 // Returns 0 and fills *out on success; -1 if not found / not mounted.
 int vfs_open(const char* name, struct vfs_file* out);
