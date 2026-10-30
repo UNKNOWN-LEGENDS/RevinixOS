@@ -189,14 +189,15 @@ disk.img: userland/hello.elf
 	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
 	mcopy -i disk.img userland/readme.txt ::/README.TXT
 
-myos.iso: $(ISO_DIR)/boot/kernel.bin
+myos.iso: $(ISO_DIR)/boot/kernel.bin disk.img
+	cp disk.img $(ISO_DIR)/boot/disk.img
 	grub-mkrescue -o myos.iso $(ISO_DIR)
 
 # run: myos.iso
 # 	qemu-system-x86_64 -cdrom myos.iso -serial stdio
 
 clean:
-	rm -rf $(BUILD) myos.iso $(ISO_DIR)/boot/kernel.bin
+	rm -rf $(BUILD) myos.iso $(ISO_DIR)/boot/kernel.bin $(ISO_DIR)/boot/disk.img
 
 .PHONY: disk-load
 disk-load: disk.img

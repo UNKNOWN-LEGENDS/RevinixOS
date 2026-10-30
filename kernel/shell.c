@@ -42,11 +42,51 @@ static void cmd_help(void) {
     kprintf("  echo <text>     print text\n");
     kprintf("  meminfo         physical memory and heap usage\n");
     kprintf("  clear           clear the screen\n");
+    kprintf("  dmesg           show the kernel log (boot messages)\n");
     kprintf("  help            show this message\n");
 }
 
 static void cmd_clear(void) {
     vga_clear();          // screen only; the serial log keeps its history
+}
+
+// Print the kernel log a screenful at a time. The VGA console is 80x25 and
+// can't scroll back, so pause before the page would push lines off the top.
+#define DMESG_ROWS 22
+static void cmd_dmesg(void) {
+    char* buf = (char*)kmalloc(KLOG_SIZE);
+    if (!buf) { kprintf("dmesg: out of memory\n"); return; }
+
+    uint32_t n = klog_snapshot(buf, KLOG_SIZE);
+    if (klog_wrapped()) {
+        static const char note[] = "(older messages were overwritten)\n";
+        console_write(note, sizeof(note) - 1);
+    }
+
+    uint32_t i = 0, rows = 0;
+    char answer[16];
+    while (i < n) {
+        uint32_t start = i;
+        while (i < n && buf[i] != '\n') i++;
+        if (i < n) i++;                              // include the newline
+        uint32_t len = i - start;
+        console_write(buf + start, len);
+
+        // a long line wraps onto several 80-column rows
+        uint32_t text = (len > 0 && buf[i - 1] == '\n') ? len - 1 : len;
+        rows += (text == 0) ? 1 : (text + 79) / 80;
+
+        if (rows >= DMESG_ROWS && i < n) {
+            static const char more[] = "-- more: Enter = next page, q + Enter = quit --";
+            console_write(more, sizeof(more) - 1);
+            while (!keyboard_poll_line(answer, sizeof(answer)))
+                __asm__ volatile ("hlt");
+            if (answer[0] == 'q') break;
+            rows = 0;
+        }
+    }
+    if (n > 0 && buf[n - 1] != '\n' && i >= n) console_write("\n", 1);
+    kfree(buf);
 }
 
 static void cmd_echo(const char* text) {
@@ -162,6 +202,7 @@ void shell_run(void) {
             else if (str_eq(line, "echo")) cmd_echo(arg);
             else if (str_eq(line, "meminfo")) cmd_meminfo();
             else if (str_eq(line, "hexdump")) cmd_hexdump(arg);
+            else if (str_eq(line, "dmesg")) cmd_dmesg();
             else kprintf("unknown command: '%s' (try 'help')\n", line);
 
             kprintf("$ ");

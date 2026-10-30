@@ -34,6 +34,8 @@ static uint64_t bitmap_phys;
 static uint64_t total_frames;
 static uint64_t used_frames;
 static uint64_t bitmap_size;   // in bytes
+static uint64_t module_start = 0;
+static uint64_t module_end = 0;
 
 static void bitmap_set(uint64_t f)   { bitmap[f / 8] |=  (1 << (f % 8)); }
 static void bitmap_clear(uint64_t f) { bitmap[f / 8] &= ~(1 << (f % 8)); }
@@ -61,11 +63,25 @@ void pmm_init(uint64_t mb2_info) {
 
     struct mb2_tag_mmap* mmap = NULL;
 
+    // Multiboot2 module tag (type 3): a file GRUB loaded into RAM for us.
+    struct __attribute__((packed)) mb2_tag_module {
+        uint32_t type;          // 3
+        uint32_t size;
+        uint32_t mod_start;     // physical address of the first byte
+        uint32_t mod_end;       // physical address one past the last byte
+        // null-terminated command line string follows
+    };
+
     // walk tags until the end tag (type 0)
     while (p < end) {
         struct mb2_tag* tag = (struct mb2_tag*)p;
         if (tag->type == 0) break;
         if (tag->type == 6) mmap = (struct mb2_tag_mmap*)tag;
+        if (tag->type == 3 && module_end == 0) {
+            struct mb2_tag_module* mod = (struct mb2_tag_module*)tag;
+            module_start = mod->mod_start;
+            module_end = mod->mod_end;
+        }
         p += ALIGN_UP(tag->size, 8);           // tags are 8-byte aligned
     }
 
@@ -103,11 +119,24 @@ void pmm_init(uint64_t mb2_info) {
     uint64_t mb2_start = mb2_info;
     uint64_t mb2_end   = mb2_info + total_size;   // total_size = *(uint32_t*)mb2_info
 
-    uint64_t bitmap_start = ALIGN_UP((uint64_t)kernel_phys_end, FRAME_SIZE);
-    if (mb2_end > bitmap_start && mb2_start < bitmap_start + bitmap_size) {
-        // overlap: push the bitmap to just past the mb2 info struct
-        bitmap_start = ALIGN_UP(mb2_end, FRAME_SIZE);
-    }
+        // Start right after the kernel, then keep moving the bitmap past anything
+        // it would overlap: the mb2 info struct and the boot module. Moving past
+        // one can land on the other, so loop until a pass moves nothing.
+        uint64_t bitmap_start = ALIGN_UP((uint64_t)kernel_phys_end, FRAME_SIZE);
+        int moved = 1;
+        while (moved) {
+            moved = 0;
+            if (mb2_end > bitmap_start && mb2_start < bitmap_start + bitmap_size) {
+                bitmap_start = ALIGN_UP(mb2_end, FRAME_SIZE);
+                moved = 1;
+            }
+            if (module_end && module_end > bitmap_start &&
+                module_start < bitmap_start + bitmap_size) {
+                bitmap_start = ALIGN_UP(module_end, FRAME_SIZE);
+                moved = 1;
+            }
+        }
+
     bitmap = (uint8_t*)bitmap_start;
 
     // start with everything marked used...
@@ -133,10 +162,26 @@ void pmm_init(uint64_t mb2_info) {
     for (uint64_t a = 0; a < reserve_end; a += FRAME_SIZE)
         mark_used(a / FRAME_SIZE);
 
+    // reserve the boot module's frames so nothing gets allocated on top of it
+    if (module_end) {
+        for (uint64_t a = ALIGN_DOWN(module_start, FRAME_SIZE); a < module_end; a += FRAME_SIZE)
+            mark_used(a / FRAME_SIZE);
+        kprintf("PMM: boot module at %p-%p (%d KB) reserved\n",
+                (void*)module_start, (void*)module_end,
+                (int)((module_end - module_start) / 1024));
+    }
+
     kprintf("PMM: %d MB usable, %d frames total, %d free\n",
             (int)(max_addr / (1024 * 1024)),
             (int)total_frames,
             (int)(total_frames - used_frames));
+}
+
+int pmm_boot_module(uint64_t* phys, uint64_t* size) {
+    if (module_end == 0) return -1;
+    *phys = module_start;
+    *size = module_end - module_start;
+    return 0;
 }
 
 void pmm_use_hhdm(void) {
