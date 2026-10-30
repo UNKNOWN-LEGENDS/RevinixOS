@@ -1,4 +1,5 @@
-iso/boot/disk.imgbuild/
+iso/boot/disk.img
+build/
 myos.iso
 disk.img
 iso/boot/kernel.bin
