@@ -1,6 +1,7 @@
 #ifndef ATA_H
 #define ATA_H
 #include <stdint.h>
+#include "block.h"
 
 #define ATA_SECTOR_SIZE 512
 
@@ -21,5 +22,7 @@ void ata_allow_writes(int on);
 // Returns 0 on success, non-zero on error. `count` sectors, 1..255.
 int ata_read (uint32_t lba, uint8_t count, void* buf);
 int ata_write(uint32_t lba, uint8_t count, const void* buf);
+
+int ata_blockdev(struct block_device* out);
 
 #endif

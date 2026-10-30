@@ -16,6 +16,7 @@
 #include "fs/vfs.h"
 #include "drivers/keyboard.h"
 #include "shell.h"
+#include "drivers/ramdisk.h"
 
 void irq_install(void);
 
@@ -208,7 +209,22 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     }
 #endif
 
-    int fs_ok = disk_ok && (fat32_init(&g_fs) == 0);
+    // Pick the device the root filesystem lives on: the RAM disk GRUB loaded
+    // (works on any machine GRUB can boot), otherwise the ATA disk (QEMU).
+    // static: g_fs keeps a pointer to it for as long as the system runs.
+    static struct block_device root_dev;
+    int dev_ok = 0;
+    uint64_t mod_phys, mod_size;
+    if (pmm_boot_module(&mod_phys, &mod_size) == 0)
+        dev_ok = (ramdisk_init(&root_dev, mod_phys, mod_size) == 0);
+    if (!dev_ok && disk_ok)
+        dev_ok = (ata_blockdev(&root_dev) == 0);
+
+    if (dev_ok) kprintf("fs: root device is %s\n", root_dev.name);
+    else        kprintf("fs: no root device (no RAM disk module, no ATA disk)\n");
+
+    int fs_ok = dev_ok && (fat32_init(&g_fs, &root_dev) == 0);
+
     if (fs_ok) {
         kprintf("fat32: geometry parsed successfully.\n");
 

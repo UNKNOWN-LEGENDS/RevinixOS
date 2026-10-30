@@ -1,6 +1,7 @@
 #ifndef FAT32_H
 #define FAT32_H
 #include <stdint.h>
+#include "../drivers/block.h"
 
 #define FAT32_EOC 0x0FFFFFF8
 
@@ -44,6 +45,7 @@ struct fat32_fs {
     uint32_t sectors_per_cluster;
     uint32_t bytes_per_sector;
     uint32_t root_cluster;
+    struct block_device* dev;
 };
 
 uint32_t fat32_next_cluster(const struct fat32_fs* fs, uint32_t cluster);
@@ -89,6 +91,6 @@ int fat32_find(const struct fat32_fs* fs, const char* name, struct fat32_file* o
 int fat32_read_file(const struct fat32_fs* fs, const struct fat32_file* file, uint8_t* buf, uint32_t buf_size);
 
 // Read + validate the boot sector, fill in geometry. Returns 0 on success.
-int fat32_init(struct fat32_fs* fs);
+int fat32_init(struct fat32_fs* fs, struct block_device* dev);
 
 #endif

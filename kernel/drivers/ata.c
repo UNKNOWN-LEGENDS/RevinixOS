@@ -206,3 +206,28 @@ int ata_write(uint32_t lba, uint8_t count, const void* buf) {
     }
     return 0;
 }
+
+// ---- block device backend ----
+// block_read() hands us up to 2^32 sectors; ata_read() takes at most 255 per
+// command, so split large requests.
+static int ata_block_read(struct block_device* dev, uint64_t lba, uint32_t count, void* buf) {
+    (void)dev;
+    uint8_t* p = (uint8_t*)buf;
+    while (count > 0) {
+        uint8_t n = count > 255 ? 255 : (uint8_t)count;
+        if (ata_read((uint32_t)lba, n, p) != 0) return -1;
+        lba   += n;
+        count -= n;
+        p     += (uint32_t)n * ATA_SECTOR_SIZE;
+    }
+    return 0;
+}
+
+int ata_blockdev(struct block_device* out) {
+    if (!ata_present) return -1;
+    out->name    = "ata0";
+    out->sectors = ata_sectors;
+    out->read    = ata_block_read;
+    out->priv    = 0;
+    return 0;
+}

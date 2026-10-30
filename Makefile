@@ -54,9 +54,13 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
         $(BUILD)/usermode.o $(BUILD)/syscall.o $(BUILD)/syscall_entry.o \
         $(BUILD)/user_program.o $(BUILD)/elf.o \
 		$(BUILD)/ata.o $(BUILD)/fat32.o $(BUILD)/vfs.o $(BUILD)/keyboard.o \
-		$(BUILD)/shell.o
+		$(BUILD)/shell.o $(BUILD)/ramdisk.o
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
+
+$(BUILD)/ramdisk.o: kernel/drivers/ramdisk.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
 
 $(BUILD)/shell.o: kernel/shell.c
 	mkdir -p $(BUILD)

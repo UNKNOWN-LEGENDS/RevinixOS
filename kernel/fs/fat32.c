@@ -29,7 +29,7 @@ void fat32_list_root(const struct fat32_fs* fs) {
 
         for (uint32_t s = 0; s < fs->sectors_per_cluster; s++) {
             uint8_t sector[ATA_SECTOR_SIZE];
-            if (ata_read(lba + s, 1, sector) != 0) {
+            if (block_read(fs->dev, lba + s, 1, sector) != 0) {
                 kprintf("fat32: dir read failed at LBA %d\n", (int)(lba + s));
                 return;
             }
@@ -55,11 +55,12 @@ void fat32_list_root(const struct fat32_fs* fs) {
     }
 }
 
-int fat32_init(struct fat32_fs* fs) {
+int fat32_init(struct fat32_fs* fs, struct block_device* dev) {
     uint8_t sector[ATA_SECTOR_SIZE];
+    fs->dev = dev;
 
     // Boot sector / BPB lives at LBA 0.
-    if (ata_read(0, 1, sector) != 0) {
+    if (block_read(fs->dev, 0, 1, sector) != 0) {
         kprintf("fat32: failed to read boot sector\n");
         return -1;
     }
@@ -107,7 +108,7 @@ uint32_t fat32_next_cluster(const struct fat32_fs* fs, uint32_t cluster) {
     uint32_t offset_in_sector = fat_offset % ATA_SECTOR_SIZE;
 
     uint8_t sector[ATA_SECTOR_SIZE];
-    if (ata_read(fat_sector, 1, sector) != 0) {
+    if (block_read(fs->dev, fat_sector, 1, sector) != 0) {
         kprintf("fat32: FAT read failed at LBA %d\n", (int)fat_sector);
         return 0;
     }
@@ -135,7 +136,7 @@ int fat32_find(const struct fat32_fs* fs, const char* name, struct fat32_file* o
 
         for (uint32_t s = 0; s < fs->sectors_per_cluster; s++) {
             uint8_t sector[ATA_SECTOR_SIZE];
-            if (ata_read(lba + s, 1, sector) != 0) {
+            if (block_read(fs->dev, lba + s, 1, sector) != 0) {
                 kprintf("fat32: dir read failed at LBA %d\n", (int)(lba + s));
                 return -1;
             }
@@ -180,7 +181,7 @@ int fat32_read_file(const struct fat32_fs* fs, const struct fat32_file* file,
         // Read the whole cluster, sector by sector, into buf (bounded by size).
         for (uint32_t s = 0; s < fs->sectors_per_cluster && copied < file->size; s++) {
             uint8_t sector[ATA_SECTOR_SIZE];
-            if (ata_read(lba + s, 1, sector) != 0) {
+            if (block_read(fs->dev, lba + s, 1, sector) != 0) {
                 kprintf("fat32: file read failed at LBA %d\n", (int)(lba + s));
                 return -1;
             }
