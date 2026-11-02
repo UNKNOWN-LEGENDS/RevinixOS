@@ -14,7 +14,7 @@ void task_exit(void);
 // Returns bytes written.
 static int64_t sys_write(const char* buf, uint64_t count) {
     for (uint64_t i = 0; i < count; i++) {
-        serial_write_char(buf[i]);
+        kprintf("%c", buf[i]);
     }
     return (int64_t)count;
 }
