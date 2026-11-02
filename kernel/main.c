@@ -17,6 +17,7 @@
 #include "drivers/keyboard.h"
 #include "shell.h"
 #include "drivers/ramdisk.h"
+#include "bootinfo.h"
 
 void irq_install(void);
 
@@ -189,6 +190,7 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     __asm__ volatile ("sti");
     kprintf("PIC remapped, timer + keyboard IRQs live.\n");
 
+    bootinfo_init(mb2_info);
     pmm_init(mb2_info);
     vmm_init();
     vga_enable();

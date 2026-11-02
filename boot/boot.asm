@@ -9,6 +9,18 @@ mb2_header_start:
     dd 0                          ; architecture: 0 = i386 protected mode
     dd mb2_header_end - mb2_header_start
     dd -(0xE85250D6 + 0 + (mb2_header_end - mb2_header_start))
+    
+    ; framebuffer request tag (type 5): ask GRUB for a linear graphics mode
+    align 8
+    dw 5                          ; type
+    dw 1                          ; flags: 1 = optional (text mode if unavailable)
+    dd 20                         ; size
+    dd 1366                       ; width
+    dd 768                        ; height
+    dd 32                         ; bits per pixel
+
+    ; end tag
+    
     align 8
     dw 0
     dw 0
