@@ -177,6 +177,21 @@ void pmm_init(uint64_t mb2_info) {
             (int)(total_frames - used_frames));
 }
 
+// Allocate `count` physically contiguous frames (first fit).
+// Returns the physical address of the first one, or 0 if no run is big enough.
+uint64_t pmm_alloc_contig(uint64_t count) {
+    uint64_t run = 0;
+    for (uint64_t i = 1; i < total_frames; i++) {
+        if (bitmap_test(i)) { run = 0; continue; }
+        if (++run == count) {
+            uint64_t first = i - count + 1;
+            for (uint64_t f = first; f <= i; f++) mark_used(f);
+            return first * FRAME_SIZE;
+        }
+    }
+    return 0;
+}
+
 int pmm_boot_module(uint64_t* phys, uint64_t* size) {
     if (module_end == 0) return -1;
     *phys = module_start;

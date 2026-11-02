@@ -2,6 +2,7 @@
 #include "../mm/vmm.h"
 #include<stdint.h>
 #include "../arch/x86_64/io.h"
+#include "../gfx/fbcon.h"
 
 #define VGA_MEM ((volatile uint16_t*)(0xB8000 + HHDM_OFFSET))
 #define VGA_WIDTH 80
@@ -34,6 +35,7 @@ static void vga_update_hw_cursor(void) {
 }
 
 void vga_clear(void) {
+    if (fbcon_active()) { fbcon_clear(); return; } //graphics mode
     if (!vga_ready) return;
     for (int i=0; i<VGA_WIDTH * VGA_HEIGHT; i++) {
         VGA_MEM[i] = vga_entry(' ');
@@ -44,6 +46,7 @@ void vga_clear(void) {
 }
 
 void vga_print_at(const char* s, int row, int col) {
+    if (fbcon_active()) { fbcon_write_at(s, row, col); return; }
     int offset = row * VGA_WIDTH + col;
     for (int i=0; s[i]!='\0'; i++) {
         VGA_MEM[offset++] = vga_entry(s[i]);
@@ -79,6 +82,7 @@ static void vga_scroll(void) {
 
 // Emit one character to the screen, handling newline, backspace, and scroll.
 void vga_putc(char ch) {
+    if (fbcon_active()) { fbcon_putc(ch); return; }     //graphics mode
     if (!vga_ready) return;         //HHDM not mapped yet; skip screen output
 
     if (ch == '\n') {

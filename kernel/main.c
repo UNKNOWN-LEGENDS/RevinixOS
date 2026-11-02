@@ -18,6 +18,8 @@
 #include "shell.h"
 #include "drivers/ramdisk.h"
 #include "bootinfo.h"
+#include "gfx/gfx.h"
+#include "gui/desktop.h"
 
 void irq_install(void);
 
@@ -201,6 +203,9 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
     kprintf("VGA: printed hello world to screen. \n");
 
     heap_init();
+
+    if (gfx_init() == 0)
+        desktop_init();     //text goes to the terminal window
 
     int disk_ok = (ata_init() == 0);
 #ifdef REVINIX_DISK_TEST

@@ -17,6 +17,7 @@ extern char kernel_phys_end[];
 
 static uint64_t kernel_pml4;   // physical address of our top-level table
 static int vmm_active = 0;   // 0 = access tables via identity map, 1 = via HHDM
+static uint64_t hhdm_end = 0;
 
 // Get a writable pointer to a page-table frame.
 // Before we switch CR3 we're on boot.asm's identity map (phys == virt, low RAM).
@@ -79,6 +80,7 @@ void vmm_init(void) {
     max_phys = (max_phys + TWO_MB - 1) & ~(TWO_MB - 1);   // round up to 2 MB
     for (uint64_t a = 0; a < max_phys; a += TWO_MB)
         map_huge(HHDM_OFFSET + a, a, PAGE_PRESENT | PAGE_WRITABLE);
+    hhdm_end = max_phys;
 
     // 4) Switch to our tables, then start using the HHDM for table access.
     __asm__ volatile ("mov %0, %%cr3" : : "r"(kernel_pml4) : "memory");
@@ -153,4 +155,19 @@ uint64_t vmm_create_address_space(void) {
 
 void vmm_switch_address_space(uint64_t pml4_phys) {
     __asm__ volatile ("mov %0, %%cr3" : : "r"(pml4_phys) : "memory");
+}
+
+// Make a physical device range (e.g. the framebuffer) reachable at its HHDM
+// address. Anything below hhdm_end is already mapped by the 2 MB HHDM pages;
+// device memory above the end of RAM is not, so map it with 4 KB pages.
+// The HHDM lives in PML4[256], which every process shares, so the mapping is
+// visible no matter which address space is active.
+void* vmm_map_mmio(uint64_t phys, uint64_t size) {
+    uint64_t start = phys & ~0xFFFull;
+    uint64_t end   = (phys + size + 0xFFF) & ~0xFFFull;
+    for (uint64_t a = start; a < end; a += 0x1000) {
+        if (a < hhdm_end) continue;
+        vmm_map_page(HHDM_OFFSET + a, a, PAGE_PRESENT | PAGE_WRITABLE);
+    }
+    return phys_to_virt(phys);
 }

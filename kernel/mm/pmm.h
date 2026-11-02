@@ -12,5 +12,6 @@ uint64_t pmm_total_frames(void);
 uint64_t pmm_used_frames(void);
 void pmm_use_hhdm(void);
 int pmm_boot_module(uint64_t* phys, uint64_t* size);
+uint64_t pmm_alloc_contig(uint64_t count);
 
 #endif

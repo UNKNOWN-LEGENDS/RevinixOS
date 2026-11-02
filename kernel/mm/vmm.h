@@ -31,6 +31,7 @@ uint64_t vmm_get_phys(uint64_t virt);       // translate; 0 if unmapped
 uint64_t vmm_create_address_space(void);            // new PML4; kernel half shared in
 void     vmm_switch_address_space(uint64_t pml4_phys);  // load CR3
 uint64_t vmm_kernel_pml4(void);                     // the shared kernel / template PML4
+void* vmm_map_mmio(uint64_t phys, uint64_t size);
 
 //convert a physical address to its HHDM virtual address and back
 static inline void* phys_to_virt(uint64_t phys) {return (void*)(phys + HHDM_OFFSET); }

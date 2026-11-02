@@ -54,9 +54,31 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
         $(BUILD)/usermode.o $(BUILD)/syscall.o $(BUILD)/syscall_entry.o \
         $(BUILD)/user_program.o $(BUILD)/elf.o \
 		$(BUILD)/ata.o $(BUILD)/fat32.o $(BUILD)/vfs.o $(BUILD)/keyboard.o \
-		$(BUILD)/shell.o $(BUILD)/ramdisk.o $(BUILD)/bootinfo.o
+		$(BUILD)/shell.o $(BUILD)/ramdisk.o $(BUILD)/bootinfo.o \
+		$(BUILD)/rtc.o $(BUILD)/font8x16.o $(BUILD)/gfx.o $(BUILD)/fbcon.o \
+		$(BUILD)/desktop.o
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
+
+$(BUILD)/rtc.o: kernel/drivers/rtc.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(BUILD)/font8x16.o: kernel/gfx/font8x16.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(BUILD)/gfx.o: kernel/gfx/gfx.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(BUILD)/fbcon.o: kernel/gfx/fbcon.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(BUILD)/desktop.o: kernel/gui/desktop.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
 
 $(BUILD)/bootinfo.o: kernel/bootinfo.c
 	mkdir -p $(BUILD)

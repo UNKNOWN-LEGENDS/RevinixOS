@@ -8,6 +8,7 @@
 #include "user/elf.h"
 #include "drivers/vga.h"
 #include "mm/pmm.h"
+#include "gui/desktop.h"
 
 // These live in main.c; declare them so the shell can launch a process.
 extern struct fat32_fs g_fs;                       // the mounted filesystem (see main.c note)
@@ -208,5 +209,6 @@ void shell_run(void) {
             kprintf("$ ");
         }
         __asm__ volatile ("hlt");
+        desktop_tick();         //taskbar clock current
     }
 }
