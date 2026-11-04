@@ -56,9 +56,13 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
 		$(BUILD)/ata.o $(BUILD)/fat32.o $(BUILD)/vfs.o $(BUILD)/keyboard.o \
 		$(BUILD)/shell.o $(BUILD)/ramdisk.o $(BUILD)/bootinfo.o \
 		$(BUILD)/rtc.o $(BUILD)/font8x16.o $(BUILD)/gfx.o $(BUILD)/fbcon.o \
-		$(BUILD)/desktop.o
+		$(BUILD)/desktop.o $(BUILD)/mouse.o
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
+
+$(BUILD)/mouse.o: kernel/drivers/mouse.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
 
 $(BUILD)/rtc.o: kernel/drivers/rtc.c
 	mkdir -p $(BUILD)

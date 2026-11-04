@@ -4,6 +4,7 @@
 #include "../../sched/sched.h"
 #include <stdint.h>
 #include "../../drivers/keyboard.h"
+#include "../../drivers/mouse.h"
 
 extern void* irq_stub_table[];
 void set_gate_external(int vec, void* handler, uint8_t type_attr); // from idt.c
@@ -70,6 +71,9 @@ void irq_handler(struct interrupt_frame* frame) {
             keyboard_handle_scancode(scancode);
             break;
         }
+        case 12: // PS/2 mouse
+            mouse_handle_irq();
+            break;
         default:
             break;
     }

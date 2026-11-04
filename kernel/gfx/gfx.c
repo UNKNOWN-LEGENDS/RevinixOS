@@ -4,6 +4,7 @@
 #include "../mm/pmm.h"
 #include "../mm/vmm.h"
 #include "../kprintf.h"
+#include "../arch/x86_64/irqflags.h"
 
 static int       ready = 0;
 static int       W, H;            // screen size in pixels
@@ -11,6 +12,33 @@ static uint32_t  pitch;           // framebuffer bytes per row
 static int       bytespp;         // framebuffer bytes per pixel: 4 or 3
 static volatile uint8_t* front;   // the real framebuffer (video memory)
 static uint32_t* back;            // back buffer in RAM: W*H pixels, no padding
+
+// ---- mouse cursor ----
+// The cursor is never drawn into the back buffer. gfx_present() paints it on
+// top of the screen copy, so the back buffer always holds what is UNDER it and
+// moving the cursor is just "present the old spot, present the new spot".
+#define CUR_W 11
+#define CUR_H 17
+static const char* cursor_shape[CUR_H] = {
+    "X          ",
+    "XX         ",
+    "X.X        ",
+    "X..X       ",
+    "X...X      ",
+    "X....X     ",
+    "X.....X    ",
+    "X......X   ",
+    "X.......X  ",
+    "X........X ",
+    "X.....XXXXX",
+    "X..X..X    ",
+    "X.X X..X   ",
+    "XX  X..X   ",
+    "X    X..X  ",
+    "     X..X  ",
+    "      XX   ",
+};
+static int cur_on = 0, cur_x = 0, cur_y = 0;
 
 int gfx_ready(void)  { return ready; }
 int gfx_width(void)  { return W; }
@@ -104,6 +132,41 @@ void gfx_scroll_up(int x, int y, int w, int h, int dy, uint32_t bg) {
     gfx_fill_rect(x, y + h - dy, w, dy, bg);
 }
 
+// Write one pixel straight to video memory (used only for the cursor).
+static void front_pixel(int x, int y, uint32_t c) {
+    if (bytespp == 4) {
+        ((volatile uint32_t*)(front + (uint64_t)y * pitch))[x] = c;
+    } else {
+        volatile uint8_t* p = front + (uint64_t)y * pitch + (uint64_t)x * 3;
+        p[0] = (uint8_t)c; p[1] = (uint8_t)(c >> 8); p[2] = (uint8_t)(c >> 16);
+    }
+}
+
+// Paint the part of the cursor that falls inside an (already clipped) rectangle.
+static void overlay_cursor(int x, int y, int w, int h) {
+    if (!cur_on) return;
+    int x0 = x > cur_x ? x : cur_x;
+    int y0 = y > cur_y ? y : cur_y;
+    int x1 = (x + w < cur_x + CUR_W) ? x + w : cur_x + CUR_W;
+    int y1 = (y + h < cur_y + CUR_H) ? y + h : cur_y + CUR_H;
+    for (int py = y0; py < y1; py++)
+        for (int px = x0; px < x1; px++) {
+            char c = cursor_shape[py - cur_y][px - cur_x];
+            if (c == 'X')      front_pixel(px, py, RGB(0x00, 0x00, 0x00));
+            else if (c == '.') front_pixel(px, py, RGB(0xFF, 0xFF, 0xFF));
+        }
+}
+
+void gfx_cursor_set(int x, int y) {
+    if (!ready) return;
+    uint64_t f = irq_save();
+    int ox = cur_x, oy = cur_y, was_on = cur_on;
+    cur_x = x; cur_y = y; cur_on = 1;
+    if (was_on) gfx_present(ox, oy, CUR_W, CUR_H);   // repaint what was under the old spot
+    gfx_present(x, y, CUR_W, CUR_H);                 // draws the cursor at the new spot
+    irq_restore(f);
+}
+
 void gfx_present(int x, int y, int w, int h) {
     if (!ready || !clip(&x, &y, &w, &h)) return;
     for (int row = y; row < y + h; row++) {
@@ -120,4 +183,5 @@ void gfx_present(int x, int y, int w, int h) {
             }
         }
     }
+    overlay_cursor(x, y, w, h);
 }

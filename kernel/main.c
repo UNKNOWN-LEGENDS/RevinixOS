@@ -20,6 +20,7 @@
 #include "bootinfo.h"
 #include "gfx/gfx.h"
 #include "gui/desktop.h"
+#include "drivers/mouse.h"
 
 void irq_install(void);
 
@@ -206,6 +207,8 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
 
     if (gfx_init() == 0)
         desktop_init();     //text goes to the terminal window
+
+    mouse_init();
 
     int disk_ok = (ata_init() == 0);
 #ifdef REVINIX_DISK_TEST

@@ -3,6 +3,7 @@
 #include "../gfx/fbcon.h"
 #include "../gfx/font.h"
 #include "../drivers/rtc.h"
+#include "../drivers/mouse.h"
 
 #define TASKBAR_H   36
 #define TITLEBAR_H  28
@@ -120,6 +121,9 @@ void desktop_init(void) {
 
 void desktop_tick(void) {
     if (!gfx_ready() || !fbcon_active()) return;
+    struct mouse_state m;
+    if (mouse_poll(&m))
+        gfx_cursor_set(m.x, m.y);
     struct rtc_time t;
     rtc_read(&t);
     if (t.second == last_second) return;

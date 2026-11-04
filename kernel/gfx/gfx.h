@@ -24,4 +24,6 @@ void gfx_scroll_up(int x, int y, int w, int h, int dy, uint32_t bg);
 // Copy a rectangle of the back buffer to the screen.
 void gfx_present(int x, int y, int w, int h);
 
+void gfx_cursor_set(int x, int y);
+
 #endif

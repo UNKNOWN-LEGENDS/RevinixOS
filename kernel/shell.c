@@ -9,6 +9,7 @@
 #include "drivers/vga.h"
 #include "mm/pmm.h"
 #include "gui/desktop.h"
+#include "drivers/mouse.h"
 
 // These live in main.c; declare them so the shell can launch a process.
 extern struct fat32_fs g_fs;                       // the mounted filesystem (see main.c note)
@@ -44,6 +45,7 @@ static void cmd_help(void) {
     kprintf("  meminfo         physical memory and heap usage\n");
     kprintf("  clear           clear the screen\n");
     kprintf("  dmesg           show the kernel log (boot messages)\n");
+    kprintf("  mouse           show mouse position, buttons and packet count\n");
     kprintf("  help            show this message\n");
 }
 
@@ -88,6 +90,16 @@ static void cmd_dmesg(void) {
     }
     if (n > 0 && buf[n - 1] != '\n' && i >= n) console_write("\n", 1);
     kfree(buf);
+}
+
+static void cmd_mouse(void) {
+    struct mouse_state m;
+    mouse_get(&m);
+    kprintf("mouse: x=%d y=%d buttons=%s%s%s packets=%d\n", m.x, m.y,
+            (m.buttons & MOUSE_LEFT)   ? "L" : "-",
+            (m.buttons & MOUSE_MIDDLE) ? "M" : "-",
+            (m.buttons & MOUSE_RIGHT)  ? "R" : "-",
+            (int)m.packets);
 }
 
 static void cmd_echo(const char* text) {
@@ -204,6 +216,7 @@ void shell_run(void) {
             else if (str_eq(line, "meminfo")) cmd_meminfo();
             else if (str_eq(line, "hexdump")) cmd_hexdump(arg);
             else if (str_eq(line, "dmesg")) cmd_dmesg();
+            else if (str_eq(line, "mouse")) cmd_mouse();
             else kprintf("unknown command: '%s' (try 'help')\n", line);
 
             kprintf("$ ");
