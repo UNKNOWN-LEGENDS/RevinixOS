@@ -12,6 +12,8 @@
 #define HHDM_OFFSET 0xFFFF800000000000ull
 #define KERNEL_VMA 0xFFFFFFFF80000000ull
 
+#define USER_SPACE_END 0x0000800000000000ull
+
 #define KERNEL_VIRT_BASE 0xFFFFFFFF80100000ull   // the VMA that maps to phys 1 MB
 #define KERNEL_PHYS_BASE 0x100000ull             // kernel image loads at 1 MB
 
@@ -32,6 +34,7 @@ uint64_t vmm_create_address_space(void);            // new PML4; kernel half sha
 void     vmm_switch_address_space(uint64_t pml4_phys);  // load CR3
 uint64_t vmm_kernel_pml4(void);                     // the shared kernel / template PML4
 void* vmm_map_mmio(uint64_t phys, uint64_t size);
+int vmm_user_range_ok(uint64_t pml4, uint64_t va, uint64_t len, int write);
 
 //convert a physical address to its HHDM virtual address and back
 static inline void* phys_to_virt(uint64_t phys) {return (void*)(phys + HHDM_OFFSET); }

@@ -56,9 +56,13 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
 		$(BUILD)/ata.o $(BUILD)/fat32.o $(BUILD)/vfs.o $(BUILD)/keyboard.o \
 		$(BUILD)/shell.o $(BUILD)/ramdisk.o $(BUILD)/bootinfo.o \
 		$(BUILD)/rtc.o $(BUILD)/font8x16.o $(BUILD)/gfx.o $(BUILD)/fbcon.o \
-		$(BUILD)/desktop.o $(BUILD)/mouse.o
+		$(BUILD)/desktop.o $(BUILD)/mouse.o $(BUILD)/uaccess.o
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
+
+$(BUILD)/uaccess.o: kernel/mm/uaccess.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
 
 $(BUILD)/mouse.o: kernel/drivers/mouse.c
 	mkdir -p $(BUILD)
@@ -115,6 +119,10 @@ $(BUILD)/elf.o: kernel/user/elf.c
 userland/hello.elf: userland/hello.asm userland/user.ld
 	nasm -f elf64 userland/hello.asm -o userland/hello.o
 	x86_64-elf-ld -T userland/user.ld userland/hello.o -o userland/hello.elf
+
+userland/ptrtest.elf: userland/ptrtest.asm userland/user.ld
+	nasm -f elf64 userland/ptrtest.asm -o userland/ptrtest.o
+	x86_64-elf-ld -T userland/user.ld userland/ptrtest.o -o userland/ptrtest.elf
 
 $(BUILD)/ata.o: kernel/drivers/ata.c
 	$(CC) $(CFLAGS) -c kernel/drivers/ata.c -o $@
@@ -217,10 +225,11 @@ run: $(ISO) disk-load
 		-boot order=d \
 		-serial stdio
 
-disk.img: userland/hello.elf
+disk.img: userland/hello.elf userland/ptrtest.elf
 	qemu-img create -f raw disk.img 16M
 	mkfs.vfat -F 32 -n REVINIX disk.img
 	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
+	mcopy -i disk.img userland/ptrtest.elf ::/PTRTEST.ELF
 	mcopy -i disk.img userland/readme.txt ::/README.TXT
 
 myos.iso: $(ISO_DIR)/boot/kernel.bin disk.img

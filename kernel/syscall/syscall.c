@@ -3,6 +3,7 @@
 #include "../kprintf.h"
 #include "../drivers/serial.h"
 #include <stdint.h>
+#include "../mm/uaccess.h"
 
 extern void syscall_entry(void);
 void set_gate_external(int vec, void* handler, uint8_t type_attr);
@@ -10,13 +11,27 @@ void set_gate_external(int vec, void* handler, uint8_t type_attr);
 // task_exit lives in the scheduler; used by SYS_EXIT
 void task_exit(void);
 
-// SYS_WRITE: write `count` bytes from `buf` to the console (serial).
-// Returns bytes written.
-static int64_t sys_write(const char* buf, uint64_t count) {
-    for (uint64_t i = 0; i < count; i++) {
-        kprintf("%c", buf[i]);
+// SYS_WRITE: write `count` bytes from the user buffer `ubuf` to the console.
+// Returns bytes written, or -EFAULT if any byte of the buffer isn't valid
+// user memory (nothing is printed in that case).
+#define WRITE_MAX   (1024 * 1024)      // one call may print at most 1 MB
+#define WRITE_CHUNK 256
+
+static int64_t sys_write(uint64_t ubuf, uint64_t count) {
+    if (count > WRITE_MAX) return -EINVAL;
+    if (!user_range_ok(ubuf, count, 0)) return -EFAULT;   // check it all before printing any
+
+    char kbuf[WRITE_CHUNK];
+    uint64_t done = 0;
+    while (done < count) {
+        uint64_t n = count - done;
+        if (n > WRITE_CHUNK) n = WRITE_CHUNK;
+        if (copy_from_user(kbuf, ubuf + done, n) != 0)
+            return done ? (int64_t)done : -EFAULT;
+        for (uint64_t i = 0; i < n; i++) kprintf("%c", kbuf[i]);
+        done += n;
     }
-    return (int64_t)count;
+    return (int64_t)done;
 }
 
 // The C dispatcher. Reads the syscall number and args from the saved frame,
@@ -31,7 +46,7 @@ void syscall_dispatch(struct interrupt_frame* frame) {
 
     switch (num) {
         case SYS_WRITE:
-            ret = sys_write((const char*)a1, a2);
+            ret = sys_write(a1, a2);
             break;
         case SYS_EXIT:
             kprintf("\n[SYS_EXIT called by user program, code=%d]\n", (int)a1);

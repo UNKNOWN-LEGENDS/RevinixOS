@@ -171,3 +171,30 @@ void* vmm_map_mmio(uint64_t phys, uint64_t size) {
     }
     return phys_to_virt(phys);
 }
+
+// Is every byte of [va, va + len) mapped in `pml4` as a USER page (and
+// WRITABLE too if `write`)? The bits must be set at all four levels: the CPU
+// only allows a Ring 3 access if every level allows it, and we check the same.
+// Kernel pages (HHDM, heap, kernel image) never have PAGE_USER, so any pointer
+// into them fails here.
+int vmm_user_range_ok(uint64_t pml4, uint64_t va, uint64_t len, int write) {
+    if (len == 0) return 1;
+    uint64_t end = va + len;
+    if (end < va) return 0;                        // wrapped around 2^64
+    if (end > USER_SPACE_END) return 0;            // past the lower (user) half
+
+    uint64_t need = PAGE_PRESENT | PAGE_USER | (write ? PAGE_WRITABLE : 0);
+    for (uint64_t page = va & ~0xFFFull; page < end; page += 0x1000) {
+        uint64_t e = table(pml4)[PML4_INDEX(page)];
+        if ((e & need) != need) return 0;
+        e = table(ENTRY_ADDR(e))[PDPT_INDEX(page)];
+        if ((e & need) != need) return 0;
+        if (e & PAGE_HUGE) continue;               // 1 GB page (we never make these)
+        e = table(ENTRY_ADDR(e))[PD_INDEX(page)];
+        if ((e & need) != need) return 0;
+        if (e & PAGE_HUGE) continue;               // 2 MB page
+        e = table(ENTRY_ADDR(e))[PT_INDEX(page)];
+        if ((e & need) != need) return 0;
+    }
+    return 1;
+}
