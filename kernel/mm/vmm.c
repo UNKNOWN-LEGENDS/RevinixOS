@@ -198,3 +198,50 @@ int vmm_user_range_ok(uint64_t pml4, uint64_t va, uint64_t len, int write) {
     }
     return 1;
 }
+
+// Free everything a process owns in its address space: every user page, every
+// page table under the user half (PML4 entries 0-255), and the PML4 itself.
+// The kernel half (256-511) is shared by reference with every other space,
+// so it is never touched. Must NOT be called on the address space that is
+// currently loaded in CR3. Returns the number of frames freed.
+//
+// Assumes every user leaf page is owned by this process (true today: the ELF
+// loader and the stack setup allocate fresh frames). Shared or device pages
+// mapped into user space later will need marking so they're skipped here.
+uint64_t vmm_destroy_address_space(uint64_t pml4) {
+    uint64_t cr3;
+    __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
+    if (pml4 == kernel_pml4 || pml4 == (cr3 & 0x000FFFFFFFFFF000ull)) {
+        kprintf("vmm: refusing to destroy an active/kernel address space\n");
+        return 0;
+    }
+
+    uint64_t freed = 0;
+    uint64_t* l4 = table(pml4);
+    for (int i = 0; i < 256; i++) {                       // user half only
+        if (!(l4[i] & PAGE_PRESENT)) continue;
+        uint64_t pdpt = ENTRY_ADDR(l4[i]);
+        uint64_t* l3 = table(pdpt);
+        for (int j = 0; j < 512; j++) {
+            if (!(l3[j] & PAGE_PRESENT) || (l3[j] & PAGE_HUGE)) continue;
+            uint64_t pd = ENTRY_ADDR(l3[j]);
+            uint64_t* l2 = table(pd);
+            for (int k = 0; k < 512; k++) {
+                if (!(l2[k] & PAGE_PRESENT) || (l2[k] & PAGE_HUGE)) continue;
+                uint64_t pt = ENTRY_ADDR(l2[k]);
+                uint64_t* l1 = table(pt);
+                for (int m = 0; m < 512; m++) {
+                    if (!(l1[m] & PAGE_PRESENT)) continue;
+                    pmm_free_frame(ENTRY_ADDR(l1[m]));    // the user page itself
+                    freed++;
+                }
+                pmm_free_frame(pt); freed++;
+            }
+            pmm_free_frame(pd); freed++;
+        }
+        pmm_free_frame(pdpt); freed++;
+        l4[i] = 0;
+    }
+    pmm_free_frame(pml4); freed++;
+    return freed;
+}

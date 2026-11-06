@@ -118,7 +118,11 @@ struct fat32_fs g_fs;
 struct task* spawn_user_process(const uint8_t* image, uint64_t size) {
     uint64_t pml4 = vmm_create_address_space();
     uint64_t entry = elf_load(pml4, image, size);
-    if (!entry) { kprintf("ELF load failed.\n"); return NULL; }
+    if (!entry) {
+        kprintf("ELF load failed.\n");
+        vmm_destroy_address_space(pml4);
+        return NULL;
+    }
 
     uint64_t sframe = pmm_alloc_frame();
     vmm_map_page_in(pml4, USER_STACK_VADDR, sframe, PAGE_WRITABLE | PAGE_USER);

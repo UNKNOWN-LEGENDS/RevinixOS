@@ -24,6 +24,11 @@ void task_reap(struct task* t) {
     if (p->next == t) p->next = t->next;   // splice t out
     __asm__ volatile ("sti");
 
+    uint64_t frames = 0;
+    if (t->pml4 && t->pml4 != vmm_kernel_pml4())
+        frames = vmm_destroy_address_space(t->pml4);
+    kprintf("[task %d reaped: %d frames freed]\n", t->id, (int)frames);
+
     kfree(t->stack_base);
     kfree(t);
 }

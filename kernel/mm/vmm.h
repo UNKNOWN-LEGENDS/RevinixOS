@@ -36,6 +36,8 @@ uint64_t vmm_kernel_pml4(void);                     // the shared kernel / templ
 void* vmm_map_mmio(uint64_t phys, uint64_t size);
 int vmm_user_range_ok(uint64_t pml4, uint64_t va, uint64_t len, int write);
 
+uint64_t vmm_destroy_address_space(uint64_t pml4);
+
 //convert a physical address to its HHDM virtual address and back
 static inline void* phys_to_virt(uint64_t phys) {return (void*)(phys + HHDM_OFFSET); }
 static inline uint64_t virt_to_phys_hhdm(void* v) { return (uint64_t)v - HHDM_OFFSET; }
