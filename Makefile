@@ -5,6 +5,7 @@ ASM := nasm
 #CFLAGS := -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -nostdlib -Wall -Wextra -c
 #CFLAGS := -ffreestanding -fno-stack-protector -fno-pic -mcmodel=kernel -mno-red-zone -nostdlib -Wall -Wextra -Ikernel -c
 CFLAGS := -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mcmodel=kernel -nostdlib -Wall -Wextra -Ikernel -c
+CFLAGS += -mno-sse -mno-sse2 -mno-mmx -mno-80387
 CFLAGS += $(EXTRA)
 LDFLAGS := -ffreestanding -nostdlib -T linker.ld -z max-page-size=0x1000
 
@@ -56,9 +57,13 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
 		$(BUILD)/ata.o $(BUILD)/fat32.o $(BUILD)/vfs.o $(BUILD)/keyboard.o \
 		$(BUILD)/shell.o $(BUILD)/ramdisk.o $(BUILD)/bootinfo.o \
 		$(BUILD)/rtc.o $(BUILD)/font8x16.o $(BUILD)/gfx.o $(BUILD)/fbcon.o \
-		$(BUILD)/desktop.o $(BUILD)/mouse.o $(BUILD)/uaccess.o
+		$(BUILD)/desktop.o $(BUILD)/mouse.o $(BUILD)/uaccess.o $(BUILD)/fpu.o
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
+
+$(BUILD)/fpu.o: kernel/arch/x86_64/fpu.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
 
 $(BUILD)/uaccess.o: kernel/mm/uaccess.c
 	mkdir -p $(BUILD)
@@ -123,6 +128,10 @@ userland/hello.elf: userland/hello.asm userland/user.ld
 userland/ptrtest.elf: userland/ptrtest.asm userland/user.ld
 	nasm -f elf64 userland/ptrtest.asm -o userland/ptrtest.o
 	x86_64-elf-ld -T userland/user.ld userland/ptrtest.o -o userland/ptrtest.elf
+
+userland/ssetest.elf: userland/ssetest.asm userland/user.ld
+	nasm -f elf64 userland/ssetest.asm -o userland/ssetest.o
+	x86_64-elf-ld -T userland/user.ld userland/ssetest.o -o userland/ssetest.elf
 
 $(BUILD)/ata.o: kernel/drivers/ata.c
 	$(CC) $(CFLAGS) -c kernel/drivers/ata.c -o $@
@@ -231,6 +240,7 @@ disk.img: userland/hello.elf userland/ptrtest.elf
 	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
 	mcopy -i disk.img userland/ptrtest.elf ::/PTRTEST.ELF
 	mcopy -i disk.img userland/readme.txt ::/README.TXT
+	mcopy -i disk.img userland/ssetest.elf ::/SSETEST.ELF
 
 myos.iso: $(ISO_DIR)/boot/kernel.bin disk.img
 	cp disk.img $(ISO_DIR)/boot/disk.img

@@ -40,7 +40,7 @@ static void cmd_help(void) {
     kprintf("  ls              list files in the root directory\n");
     kprintf("  cat <file>      print a text file's contents\n");
     kprintf("  hexdump <file>  show a file's bytes (first 256)\n");
-    kprintf("  run <file>      load and execute a program\n");
+    kprintf("  run <file>      run programs (up to 4 at the same time)\n");
     kprintf("  echo <text>     print text\n");
     kprintf("  meminfo         physical memory and heap usage\n");
     kprintf("  clear           clear the screen\n");
@@ -176,24 +176,55 @@ static void cmd_cat(const char* name) {
     kfree(buf);
 }
 
-static void cmd_run(const char* name) {
+// Load one program and start it. Returns its task, or NULL on failure.
+static struct task* start_program(const char* name) {
     struct vfs_file f;
-    if (vfs_open(name, &f) != 0) { kprintf("run: '%s' not found\n", name); return; }
+    if (vfs_open(name, &f) != 0) { kprintf("run: '%s' not found\n", name); return NULL; }
     uint8_t* image = (uint8_t*)kmalloc(f.size);
-    if (!image) { kprintf("run: out of memory\n"); return; }
-    if (vfs_read(&f, image, f.size) != (int)f.size) { kprintf("run: read error\n"); kfree(image); return; }
+    if (!image) { kprintf("run: out of memory\n"); return NULL; }
+    if (vfs_read(&f, image, f.size) != (int)f.size) {
+        kprintf("run: read error\n"); kfree(image); return NULL;
+    }
     struct task* proc = spawn_user_process(image, f.size);
     kfree(image);
-    if (!proc) { kprintf("run: failed to start '%s'\n", name); return; }
+    if (!proc) { kprintf("run: failed to start '%s'\n", name); return NULL; }
     kprintf("run: started '%s' (task %d)\n", name, proc->id);
+    return proc;
+}
 
-    while (proc->state != TASK_DONE)
-    yield();
+// run A [B ...]: start up to RUN_MAX programs at once, wait for all of them,
+// then reap each one. Running two at a time is what exposes bugs in
+// per-task state (registers, FPU/SSE, address spaces).
+#define RUN_MAX 4
+static void cmd_run(char* args) {
+    char*        names[RUN_MAX];
+    struct task* procs[RUN_MAX];
+    int n = 0;
 
-    task_reap(proc);
+    char* p = args;
+    while (*p && n < RUN_MAX) {             // split the arguments on spaces
+        while (*p == ' ') p++;
+        if (!*p) break;
+        names[n] = p;
+        while (*p && *p != ' ') p++;
+        if (*p) *p++ = '\0';
+        procs[n] = start_program(names[n]);
+        if (procs[n]) n++;
+    }
+    if (n == 0) { kprintf("usage: run <file> [file ...]  (up to %d at once)\n", RUN_MAX); return; }
 
-    // kprintf("run: '%s' finished.\n", name);
-    kprintf("run: '%s' finished.\n", name);
+    for (;;) {                               // wait until every one has exited
+        int running = 0;
+        for (int i = 0; i < n; i++)
+            if (procs[i]->state != TASK_DONE) running = 1;
+        if (!running) break;
+        yield();
+    }
+
+    for (int i = 0; i < n; i++) {
+        task_reap(procs[i]);
+        kprintf("run: '%s' finished.\n", names[i]);
+    }
 }
 
 void shell_run(void) {

@@ -21,6 +21,7 @@
 #include "gfx/gfx.h"
 #include "gui/desktop.h"
 #include "drivers/mouse.h"
+#include "arch/x86_64/fpu.h"
 
 void irq_install(void);
 
@@ -279,6 +280,7 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
 
     
 
+    fpu_init();
     sched_init();
     syscall_init();         // <-- install int 0x80 before going to user mode
     kprintf("Testing user program with syscalls...\n");
