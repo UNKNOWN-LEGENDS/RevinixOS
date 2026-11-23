@@ -1,7 +1,8 @@
 #ifndef SCHED_H
 #define SCHED_H
-
 #include<stdint.h>
+#include "../fs/file.h"
+
 enum task_state { TASK_READY, TASK_RUNNING, TASK_DONE };
 
 struct task {
@@ -15,6 +16,7 @@ struct task {
     void* fpu;
     int exit_code;
     int killed_by;
+    struct file* fds[MAX_FDS];  // open files: fd number -> file (NULL = free)
 };
 
 struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack_top);
@@ -28,5 +30,6 @@ void task_exit_with(int code);
 void task_kill(int vector);
 int sched_has_other_runnable(void);                //for the boot loop
 void task_reap(struct task* t);     //unlink a DONE task from the run queue and free it
+struct task* sched_current(void);   // the task that is running right now
 
 #endif

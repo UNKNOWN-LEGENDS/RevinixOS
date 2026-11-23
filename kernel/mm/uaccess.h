@@ -11,4 +11,9 @@ int copy_from_user(void* dst, uint64_t user_src, uint64_t n);
 int user_range_ok(uint64_t uaddr, uint64_t n, int write);
 int copy_to_user(uint64_t user_dst, const void* src, uint64_t n);
 
+// Copy a NUL-terminated string from user memory into dst (at most `max`
+// bytes including the NUL). Returns the length, -EFAULT if it runs into
+// memory the program can't read, or -ENAMETOOLONG if there's no NUL in time.
+int strncpy_from_user(char* dst, uint64_t user_src, uint64_t max);
+
 #endif

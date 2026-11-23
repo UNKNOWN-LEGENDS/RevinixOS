@@ -9,6 +9,7 @@ struct vfs_file;   // forward decl
 // filesystem would provide its own table and callers wouldn't change.
 struct vfs_ops {
     int (*read)(struct vfs_file* f, uint8_t* buf, uint32_t buf_size);
+    int (*read_at)(struct vfs_file* f, uint32_t offset, uint8_t* buf, uint32_t n);
 };
 
 // An open-file handle (kernel-internal; not a userspace fd yet).
@@ -33,5 +34,9 @@ int vfs_open(const char* name, struct vfs_file* out);
 // Read up to buf_size bytes of the open file into buf.
 // Returns bytes read, or -1 on error. Dispatches through out->ops.
 int vfs_read(struct vfs_file* f, uint8_t* buf, uint32_t buf_size);
+
+// Read up to n bytes starting at byte `offset`. Returns bytes read (0 at end
+// of file) or -1 on error.
+int vfs_read_at(struct vfs_file* f, uint32_t offset, uint8_t* buf, uint32_t n);
 
 #endif

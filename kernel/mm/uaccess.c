@@ -29,3 +29,18 @@ int copy_to_user(uint64_t user_dst, const void* src, uint64_t n) {
     for (uint64_t i = 0; i < n; i++) d[i] = s[i];
     return 0;
 }
+
+int strncpy_from_user(char* dst, uint64_t user_src, uint64_t max) {
+    uint64_t pml4 = current_pml4();
+    for (uint64_t i = 0; i < max; i++) {
+        uint64_t a = user_src + i;
+        // check each page once: at the first byte and at every page boundary
+        if ((i == 0 || (a & 0xFFF) == 0) && !vmm_user_range_ok(pml4, a, 1, 0))
+            return -EFAULT;
+        char c = *(const char*)a;
+        dst[i] = c;
+        if (c == '\0') return (int)i;
+    }
+    if (max) dst[max - 1] = '\0';
+    return -ENAMETOOLONG;
+}

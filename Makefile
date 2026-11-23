@@ -57,9 +57,14 @@ OBJS := $(BUILD)/boot.o $(BUILD)/main.o $(BUILD)/serial.o $(BUILD)/kprintf.o \
 		$(BUILD)/ata.o $(BUILD)/fat32.o $(BUILD)/vfs.o $(BUILD)/keyboard.o \
 		$(BUILD)/shell.o $(BUILD)/ramdisk.o $(BUILD)/bootinfo.o \
 		$(BUILD)/rtc.o $(BUILD)/font8x16.o $(BUILD)/gfx.o $(BUILD)/fbcon.o \
-		$(BUILD)/desktop.o $(BUILD)/mouse.o $(BUILD)/uaccess.o $(BUILD)/fpu.o
+		$(BUILD)/desktop.o $(BUILD)/mouse.o $(BUILD)/uaccess.o $(BUILD)/fpu.o \
+		$(BUILD)/file.o
 
 all: $(ISO_DIR)/boot/kernel.bin myos.iso
+
+$(BUILD)/file.o: kernel/fs/file.c
+	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
 
 $(BUILD)/fpu.o: kernel/arch/x86_64/fpu.c
 	mkdir -p $(BUILD)
@@ -227,7 +232,8 @@ run: $(ISO) disk-load
 		-serial stdio
 
 disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf \
-          userland/faulttest.elf userland/nxtest.elf userland/wxtest.elf
+          userland/faulttest.elf userland/nxtest.elf userland/wxtest.elf \
+		  userland/cattest.elf
 	qemu-img create -f raw disk.img 16M
 	mkfs.vfat -F 32 -n REVINIX disk.img
 	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
@@ -237,6 +243,7 @@ disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf \
 	mcopy -i disk.img userland/faulttest.elf ::/FAULTTST.ELF
 	mcopy -i disk.img userland/nxtest.elf ::/NXTEST.ELF
 	mcopy -i disk.img userland/wxtest.elf ::/WXTEST.ELF
+	mcopy -i disk.img userland/cattest.elf ::/CATTEST.ELF
 
 myos.iso: $(ISO_DIR)/boot/kernel.bin disk.img
 	cp disk.img $(ISO_DIR)/boot/disk.img

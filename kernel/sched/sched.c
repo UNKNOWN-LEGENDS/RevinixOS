@@ -30,6 +30,7 @@ void task_reap(struct task* t) {
         frames = vmm_destroy_address_space(t->pml4);
     kprintf("[task %d reaped: %d frames freed]\n", t->id, (int)frames);
 
+    fd_table_close_all(t->fds);     //close anything the program left open
     fpu_free_state(t->fpu);
     kfree(t->stack_base);
     kfree(t);
@@ -45,6 +46,7 @@ void sched_init(void) {
     boot->pml4 = vmm_kernel_pml4();
     boot->kstack_top = tss_get_rsp0();
     boot->fpu = fpu_alloc_state();
+    fd_table_init(boot->fds);
     boot->next = boot;           // circle of one
     task_list = boot;
     current = boot;
@@ -86,6 +88,7 @@ struct task* task_create(void (*entry)(void)) {
     t->fpu = fpu_alloc_state();
     t->exit_code = 0;
     t->killed_by = -1;
+    fd_table_init(t->fds);      // fd 0, 1, 2 -> console
 
     // append to the circular list (preserve creation order)
     struct task* p = task_list;
@@ -124,6 +127,7 @@ struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack
 
     t->exit_code = 0;
     t->killed_by = -1;
+    fd_table_init(t->fds);      // fd 0, 1, 2 -> console
 
     struct task* p = task_list;
     while (p->next != task_list) p = p->next;
@@ -161,6 +165,10 @@ void schedule(void) {
 
 void yield(void) {
     schedule();
+}
+
+struct task* sched_current(void) {
+    return current;
 }
 
 void task_exit_with(int code) {

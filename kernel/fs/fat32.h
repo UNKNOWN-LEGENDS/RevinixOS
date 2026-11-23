@@ -90,6 +90,11 @@ int fat32_find(const struct fat32_fs* fs, const char* name, struct fat32_file* o
 // `buf_size` must be >= file->size. Returns bytes read, or -1 on error.
 int fat32_read_file(const struct fat32_fs* fs, const struct fat32_file* file, uint8_t* buf, uint32_t buf_size);
 
+// Read up to n bytes starting at byte `offset`. Returns bytes read (0 at end
+// of file) or -1 on error.
+int fat32_read_at(const struct fat32_fs* fs, const struct fat32_file* file,
+                  uint32_t offset, uint8_t* buf, uint32_t n);
+
 // Read + validate the boot sector, fill in geometry. Returns 0 on success.
 int fat32_init(struct fat32_fs* fs, struct block_device* dev);
 

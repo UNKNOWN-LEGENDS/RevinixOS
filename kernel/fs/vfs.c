@@ -10,8 +10,12 @@ static int             mounted = 0;
 static int fat32_backend_read(struct vfs_file* f, uint8_t* buf, uint32_t buf_size) {
     return fat32_read_file(&mounted_fs, &f->fat, buf, buf_size);
 }
+static int fat32_backend_read_at(struct vfs_file* f, uint32_t offset, uint8_t* buf, uint32_t n) {
+    return fat32_read_at(&mounted_fs, &f->fat, offset, buf, n);
+}
 static const struct vfs_ops fat32_ops = {
-    .read = fat32_backend_read,
+    .read    = fat32_backend_read,
+    .read_at = fat32_backend_read_at,
 };
 
 void vfs_mount(const struct fat32_fs* fs) {
@@ -39,4 +43,9 @@ int vfs_open(const char* name, struct vfs_file* out) {
 int vfs_read(struct vfs_file* f, uint8_t* buf, uint32_t buf_size) {
     if (!f->valid || !f->ops || !f->ops->read) return -1;
     return f->ops->read(f, buf, buf_size);   // dispatch — no mention of FAT32 here
+}
+
+int vfs_read_at(struct vfs_file* f, uint32_t offset, uint8_t* buf, uint32_t n) {
+    if (!f->valid || !f->ops || !f->ops->read_at) return -1;
+    return f->ops->read_at(f, offset, buf, n);
 }

@@ -203,3 +203,45 @@ int fat32_read_file(const struct fat32_fs* fs, const struct fat32_file* file,
     }
     return (int)copied;
 }
+
+// Read up to `n` bytes of the file starting at byte `offset` into buf.
+// Returns bytes read (0 at or past end of file), or -1 on a disk error.
+// Unlike fat32_read_file this works in pieces, which is what read(fd) needs.
+int fat32_read_at(const struct fat32_fs* fs, const struct fat32_file* file,
+                  uint32_t offset, uint8_t* buf, uint32_t n) {
+    if (offset >= file->size) return 0;
+    if (n > file->size - offset) n = file->size - offset;
+
+    uint32_t cluster_bytes = fs->sectors_per_cluster * ATA_SECTOR_SIZE;
+    uint32_t cluster = file->start_cluster;
+
+    // Walk the chain to the cluster that holds `offset`.
+    for (uint32_t skip = offset / cluster_bytes; skip > 0; skip--) {
+        cluster = fat32_next_cluster(fs, cluster);
+        if (cluster < 2 || cluster >= FAT32_EOC) return -1;   // chain shorter than size
+    }
+
+    uint32_t done = 0;
+    uint32_t pos  = offset % cluster_bytes;                    // position inside the cluster
+    uint8_t sector[ATA_SECTOR_SIZE];
+
+    while (done < n) {
+        if (cluster < 2 || cluster >= FAT32_EOC) return -1;
+        uint32_t lba = fs->data_start_lba + (cluster - 2) * fs->sectors_per_cluster
+                     + pos / ATA_SECTOR_SIZE;
+        if (block_read(fs->dev, lba, 1, sector) != 0) return -1;
+
+        uint32_t in_sector = pos % ATA_SECTOR_SIZE;
+        uint32_t take = ATA_SECTOR_SIZE - in_sector;
+        if (take > n - done) take = n - done;
+        for (uint32_t b = 0; b < take; b++) buf[done + b] = sector[in_sector + b];
+        done += take;
+        pos  += take;
+
+        if (pos == cluster_bytes) {                             // move to the next cluster
+            pos = 0;
+            if (done < n) cluster = fat32_next_cluster(fs, cluster);
+        }
+    }
+    return (int)done;
+}

@@ -5,19 +5,22 @@
 #include <stdint.h>
 #include "../mm/uaccess.h"
 #include "../sched/sched.h"
+#include "../fs/file.h"
+#include "../mm/heap.h"
 
 extern void syscall_entry(void);
 void set_gate_external(int vec, void* handler, uint8_t type_attr);
 
 // SYS_WRITE(fd, buf, count): write `count` bytes from the user buffer to fd.
-// For now only fd 1 (stdout) and fd 2 (stderr) exist; both go to the console.
-// Returns bytes written, -EBADF for any other fd, or -EFAULT if any byte of
-// the buffer isn't valid user memory (nothing is printed in that case).
+// Only console fds can be written (files are read-only until FAT32 write).
+// Returns bytes written, -EBADF for a closed or read-only fd, or -EFAULT if
+// any byte of the buffer isn't valid user memory (nothing printed then).
 #define WRITE_MAX   (1024 * 1024)      // one call may print at most 1 MB
 #define WRITE_CHUNK 256
 
 static int64_t sys_write(uint64_t fd, uint64_t ubuf, uint64_t count) {
-    if (fd != 1 && fd != 2) return -EBADF;
+    struct file* f = fd_get(sched_current()->fds, (int64_t)fd);
+    if (!f || f->kind != FILE_CONSOLE) return -EBADF;
     if (count > WRITE_MAX) return -EINVAL;
     if (!user_range_ok(ubuf, count, 0)) return -EFAULT;   // check it all before printing any
 
@@ -32,6 +35,66 @@ static int64_t sys_write(uint64_t fd, uint64_t ubuf, uint64_t count) {
         done += n;
     }
     return (int64_t)done;
+}
+
+// SYS_OPEN(path, flags): open a file in the root directory, read-only.
+// Returns the new fd, or -ENOENT / -EFAULT / -ENAMETOOLONG / -EMFILE / -EINVAL.
+#define PATH_MAX 64
+
+static int64_t sys_open(uint64_t upath, uint64_t flags) {
+    if (flags != O_RDONLY) return -EINVAL;
+
+    char path[PATH_MAX];
+    int len = strncpy_from_user(path, upath, PATH_MAX);
+    if (len < 0) return len;
+
+    // Accept "/NAME.EXT" and lowercase: FAT short names are uppercase and
+    // looked up case-insensitively.
+    char* name = path;
+    if (name[0] == '/') name++;
+    for (char* c = name; *c; c++)
+        if (*c >= 'a' && *c <= 'z') *c = (char)(*c - 'a' + 'A');
+
+    int err = 0;
+    struct file* f = file_open(name, &err);
+    if (!f) return err;
+
+    int fd = fd_install(sched_current()->fds, f);
+    if (fd < 0) kfree(f);                  // table full: don't leak the file
+    return fd;
+}
+
+// SYS_READ(fd, buf, count): read up to `count` bytes from fd into the user
+// buffer, advancing the file position. Returns bytes read (0 = end of file),
+// -EBADF, -EFAULT (buffer isn't writable user memory) or -ENOSYS (keyboard
+// input arrives in 2b.3).
+#define READ_CHUNK 512
+
+static int64_t sys_read(uint64_t fd, uint64_t ubuf, uint64_t count) {
+    struct file* f = fd_get(sched_current()->fds, (int64_t)fd);
+    if (!f) return -EBADF;
+    if (f->kind == FILE_CONSOLE) return -ENOSYS;
+    if (count > WRITE_MAX) count = WRITE_MAX;
+    if (!user_range_ok(ubuf, count, 1)) return -EFAULT;     // must be WRITABLE
+
+    uint8_t kbuf[READ_CHUNK];
+    uint64_t done = 0;
+    while (done < count) {
+        uint32_t want = (count - done > READ_CHUNK) ? READ_CHUNK : (uint32_t)(count - done);
+        int got = vfs_read_at(&f->vf, f->offset, kbuf, want);
+        if (got < 0) return done ? (int64_t)done : -EINVAL;
+        if (got == 0) break;                                  // end of file
+        if (copy_to_user(ubuf + done, kbuf, (uint64_t)got) != 0)
+            return done ? (int64_t)done : -EFAULT;
+        f->offset += (uint32_t)got;
+        done += (uint64_t)got;
+    }
+    return (int64_t)done;
+}
+
+// SYS_CLOSE(fd): returns 0 or -EBADF.
+static int64_t sys_close(uint64_t fd) {
+    return fd_close(sched_current()->fds, (int64_t)fd);
 }
 
 // The C dispatcher. Reads the syscall number and args from the saved frame,
@@ -51,9 +114,17 @@ void syscall_dispatch(struct interrupt_frame* frame) {
         case SYS_EXIT:
             task_exit_with((int)a1);          // does not return
             break;
+        case SYS_OPEN:
+            ret = sys_open(a1, a2);
+            break;
+        case SYS_READ:
+            ret = sys_read(a1, a2, a3);
+            break;
+        case SYS_CLOSE:
+            ret = sys_close(a1);
+            break;
         default:
-            kprintf("[unknown syscall %d]\n", (int)num);
-            ret = -1;
+            ret = -ENOSYS;
             break;
     }
 
