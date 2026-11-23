@@ -1,6 +1,7 @@
+#include<stdint.h>
 #include "idt.h"
 #include "../../kprintf.h"
-#include<stdint.h>
+#include "../../sched/sched.h"
 
 struct __attribute__((packed)) idt_entry {
     uint16_t offset_low;
@@ -63,8 +64,31 @@ void idt_init(void) {
     idt_load(&idtp);
 }
 
+// A user program faulted: report it, kill that task, carry on.
+// Never returns: task_exit() switches to another task for good, and the shell
+// reaps this one (frees its stack and address space) like a normal exit.
+static void user_fault(struct interrupt_frame* frame) {
+    const char* name = frame->int_no < 32 ? exception_names[frame->int_no] : "Unknown";
+    kprintf("\n[fault] user program: %s (vector %d) at RIP=%p\n",
+            name, (int)frame->int_no, (void*)frame->rip);
+
+    if (frame->int_no == 14) {
+        uint64_t cr2;
+        __asm__ volatile ("mov %%cr2, %0" : "=r"(cr2));
+        uint64_t e = frame->err_code;
+        kprintf("[fault] %s %p: %s\n",
+                (e & 0x10) ? "instruction fetch at" : (e & 0x02) ? "write to" : "read from",
+                (void*)cr2,
+                (e & 0x01) ? "page protection violation" : "page not mapped");
+    }
+    kprintf("[fault] killing the task\n");
+    task_exit();
+}
+
 //the single C entry point every exception stub jumps to
 void isr_handler(struct interrupt_frame* frame) {
+    if ((frame->cs & 3) == 3)
+        user_fault(frame);
     kprintf("\n*** CPU EXCEPTION ***\n");
     if (frame->int_no < 32) {
         kprintf("   %s (vector %d)\n", exception_names[frame->int_no], (int)frame->int_no);

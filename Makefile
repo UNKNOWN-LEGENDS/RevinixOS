@@ -133,6 +133,10 @@ userland/ssetest.elf: userland/ssetest.asm userland/user.ld
 	nasm -f elf64 userland/ssetest.asm -o userland/ssetest.o
 	x86_64-elf-ld -T userland/user.ld userland/ssetest.o -o userland/ssetest.elf
 
+userland/%.elf: userland/%.asm userland/user.ld
+	nasm -f elf64 $< -o userland/$*.o
+	x86_64-elf-ld -T userland/user.ld userland/$*.o -o $@
+
 $(BUILD)/ata.o: kernel/drivers/ata.c
 	$(CC) $(CFLAGS) -c kernel/drivers/ata.c -o $@
 
@@ -234,13 +238,17 @@ run: $(ISO) disk-load
 		-boot order=d \
 		-serial stdio
 
-disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf
+disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf \
+          userland/faulttest.elf userland/nxtest.elf userland/wxtest.elf
 	qemu-img create -f raw disk.img 16M
 	mkfs.vfat -F 32 -n REVINIX disk.img
 	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
 	mcopy -i disk.img userland/ptrtest.elf ::/PTRTEST.ELF
 	mcopy -i disk.img userland/readme.txt ::/README.TXT
 	mcopy -i disk.img userland/ssetest.elf ::/SSETEST.ELF
+	mcopy -i disk.img userland/faulttest.elf ::/FAULTTST.ELF
+	mcopy -i disk.img userland/nxtest.elf ::/NXTEST.ELF
+	mcopy -i disk.img userland/wxtest.elf ::/WXTEST.ELF
 
 myos.iso: $(ISO_DIR)/boot/kernel.bin disk.img
 	cp disk.img $(ISO_DIR)/boot/disk.img
