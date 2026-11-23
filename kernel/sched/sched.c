@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "../mm/vmm.h"
 #include "../arch/x86_64/gdt.h"
+#include "../arch/x86_64/fpu.h"
 
 #define STACK_SIZE 16384       // 16 KB kernel stack per task
 
@@ -29,6 +30,7 @@ void task_reap(struct task* t) {
         frames = vmm_destroy_address_space(t->pml4);
     kprintf("[task %d reaped: %d frames freed]\n", t->id, (int)frames);
 
+    fpu_free_state(t->fpu);
     kfree(t->stack_base);
     kfree(t);
 }
@@ -42,6 +44,7 @@ void sched_init(void) {
     boot->stack_base = NULL;     // boot stack isn't heap-allocated
     boot->pml4 = vmm_kernel_pml4();
     boot->kstack_top = tss_get_rsp0();
+    boot->fpu = fpu_alloc_state();
     boot->next = boot;           // circle of one
     task_list = boot;
     current = boot;
@@ -80,6 +83,7 @@ struct task* task_create(void (*entry)(void)) {
     t->kstack_top = top;
     t->id = next_id++;
     t->state = TASK_READY;
+    t->fpu = fpu_alloc_state();
 
     // append to the circular list (preserve creation order)
     struct task* p = task_list;
@@ -114,6 +118,7 @@ struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack
     t->kstack_top = top;
     t->id = next_id++;
     t->state = TASK_READY;
+    t->fpu = fpu_alloc_state();
 
     struct task* p = task_list;
     while (p->next != task_list) p = p->next;
@@ -141,6 +146,9 @@ void schedule(void) {
     if (next->pml4 != prev->pml4)
         vmm_switch_address_space(next->pml4);   // enter next's address space
     tss_set_rsp0(next->kstack_top);
+
+    fpu_save(prev->fpu);
+    fpu_restore(next->fpu);
 
     context_switch(&prev->rsp, next->rsp);
     // execution resumes here when someone later switches back to prev

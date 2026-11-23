@@ -12,6 +12,7 @@ struct task {
     int id;
     enum task_state state;
     struct task* next;          //circular run queue
+    void* fpu;
 };
 
 struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack_top);

@@ -234,7 +234,7 @@ run: $(ISO) disk-load
 		-boot order=d \
 		-serial stdio
 
-disk.img: userland/hello.elf userland/ptrtest.elf
+disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf
 	qemu-img create -f raw disk.img 16M
 	mkfs.vfat -F 32 -n REVINIX disk.img
 	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
