@@ -126,7 +126,7 @@ struct task* spawn_user_process(const uint8_t* image, uint64_t size) {
     }
 
     uint64_t sframe = pmm_alloc_frame();
-    vmm_map_page_in(pml4, USER_STACK_VADDR, sframe, PAGE_WRITABLE | PAGE_USER);
+    vmm_map_page_in(pml4, USER_STACK_VADDR, sframe, PAGE_WRITABLE | PAGE_USER | vmm_nx());
 
     return task_create_user(entry, pml4, USER_STACK_VADDR + 4096);
 }
@@ -280,6 +280,7 @@ void kmain(uint64_t mb2_magic, uint64_t mb2_info) {
 
     
 
+    vmm_enable_nx();
     fpu_init();
     sched_init();
     syscall_init();         // <-- install int 0x80 before going to user mode

@@ -245,3 +245,47 @@ uint64_t vmm_destroy_address_space(uint64_t pml4) {
     pmm_free_frame(pml4); freed++;
     return freed;
 }
+
+// ---- no-execute ----
+static uint64_t nx_bit = 0;     // PAGE_NX once EFER.NXE is on
+
+void vmm_enable_nx(void) {
+    uint32_t a, b, c, d;
+    __asm__ volatile ("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(0x80000001));
+    if (!(d & (1u << 20))) {                       // CPUID.80000001h:EDX bit 20 = NX
+        kprintf("vmm: CPU has no NX bit - user pages stay executable\n");
+        return;
+    }
+    uint32_t lo, hi;
+    __asm__ volatile ("rdmsr" : "=a"(lo), "=d"(hi) : "c"(0xC0000080));   // EFER
+    lo |= (1u << 11);                              // NXE
+    __asm__ volatile ("wrmsr" : : "a"(lo), "d"(hi), "c"(0xC0000080));
+    nx_bit = PAGE_NX;
+    kprintf("vmm: NX enabled (EFER.NXE)\n");
+}
+
+uint64_t vmm_nx(void) { return nx_bit; }
+
+// Find the 4 KB page-table entry for virt, or NULL.
+static uint64_t* find_pte(uint64_t pml4, uint64_t virt) {
+    uint64_t pdpt = next_level(pml4, PML4_INDEX(virt), 0);
+    if (!pdpt) return 0;
+    uint64_t pd = next_level(pdpt, PDPT_INDEX(virt), 0);
+    if (!pd) return 0;
+    uint64_t pde = table(pd)[PD_INDEX(virt)];
+    if (!(pde & PAGE_PRESENT) || (pde & PAGE_HUGE)) return 0;
+    uint64_t* pte = &table(ENTRY_ADDR(pde))[PT_INDEX(virt)];
+    return (*pte & PAGE_PRESENT) ? pte : 0;
+}
+
+int vmm_protect_page_in(uint64_t pml4, uint64_t virt, uint64_t set, uint64_t clear) {
+    uint64_t* pte = find_pte(pml4, virt);
+    if (!pte) return -1;
+    *pte = (*pte | set) & ~clear;
+    return 0;
+}
+
+uint64_t vmm_get_pte_in(uint64_t pml4, uint64_t virt) {
+    uint64_t* pte = find_pte(pml4, virt);
+    return pte ? *pte : 0;
+}

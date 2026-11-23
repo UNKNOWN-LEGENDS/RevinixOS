@@ -55,6 +55,11 @@ uint64_t elf_load(uint64_t pml4, const uint8_t* image, uint64_t image_size) {
     for (int i = 0; i < eh->e_phnum; i++) {
         if (ph[i].p_type != PT_LOAD) continue;
 
+        if ((ph[i].p_flags & PF_W) && (ph[i].p_flags & PF_X)) {
+            kprintf("ELF: segment at %p is writable AND executable - refused (W^X)\n", (void*)ph[i].p_vaddr);
+            return 0;
+        }
+
         uint64_t vaddr  = ph[i].p_vaddr;
         uint64_t filesz = ph[i].p_filesz;
         uint64_t memsz  = ph[i].p_memsz;
@@ -73,6 +78,43 @@ uint64_t elf_load(uint64_t pml4, const uint8_t* image, uint64_t image_size) {
         }
     }
 
+    // ---- permissions (W^X) ----
+    // The copy above went through the HHDM, so the user mappings' own flags
+    // didn't matter yet. Now set them for real:
+    //   pass 1: every loaded page -> read-only + no-execute
+    //   pass 2: give back write / execute exactly where a segment asks for it
+    // A page shared by two segments ends up with both segments' rights, so
+    // pass 3 refuses the program if any page became writable AND executable.
+    uint64_t nx = vmm_nx();
+    for (int pass = 1; pass <= 3; pass++) {
+        for (int i = 0; i < eh->e_phnum; i++) {
+            if (ph[i].p_type != PT_LOAD || ph[i].p_memsz == 0) continue;
+            uint64_t start = ALIGN_DOWN(ph[i].p_vaddr, PAGE_SIZE);
+            uint64_t end   = ph[i].p_vaddr + ph[i].p_memsz;
+            uint64_t set   = (ph[i].p_flags & PF_W) ? PAGE_WRITABLE : 0;
+            uint64_t clear = (ph[i].p_flags & PF_X) ? nx : 0;
+
+            for (uint64_t page = start; page < end; page += PAGE_SIZE) {
+                if (pass == 1) {
+                    vmm_protect_page_in(pml4, page, nx, PAGE_WRITABLE);
+                } else if (pass == 2) {
+                    vmm_protect_page_in(pml4, page, set, clear);
+                } else {
+                    uint64_t pte = vmm_get_pte_in(pml4, page);
+                    if (nx && (pte & PAGE_WRITABLE) && !(pte & nx)) {
+                        kprintf("ELF: page %p would be writable AND executable - refused (W^X)\n",
+                                (void*)page);
+                        return 0;
+                    }
+                }
+            }
+            if (pass == 3)
+                kprintf("ELF: segment %p-%p %c%c%c\n", (void*)ph[i].p_vaddr, (void*)end,
+                        (ph[i].p_flags & PF_R) ? 'r' : '-',
+                        (ph[i].p_flags & PF_W) ? 'w' : '-',
+                        (ph[i].p_flags & PF_X) ? 'x' : '-');
+        }
+    }
     kprintf("ELF: loaded, entry=%p\n", (void*)eh->e_entry);
     return eh->e_entry;
 }

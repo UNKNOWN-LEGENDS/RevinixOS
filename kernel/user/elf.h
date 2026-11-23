@@ -34,6 +34,9 @@ struct elf64_phdr {
 };
 
 #define PT_LOAD 1
+#define PF_X 0x1
+#define PF_W 0x2
+#define PF_R 0x4
 #define ELF_MAGIC0 0x7F
 #define ELF_MAGIC1 'E'
 #define ELF_MAGIC2 'L'
