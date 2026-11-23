@@ -13,6 +13,8 @@ struct task {
     enum task_state state;
     struct task* next;          //circular run queue
     void* fpu;
+    int exit_code;
+    int killed_by;
 };
 
 struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack_top);
@@ -21,7 +23,9 @@ void sched_init(void);                              //register the boot context 
 struct task* task_create(void (*entry)(void));      //spawn a new kernel task
 void schedule(void);                                //pick next task and switch
 void yield(void);                                   //cooperative hand-off
-void task_exit(void);                               //end current task
+void task_exit(void);
+void task_exit_with(int code);
+void task_kill(int vector);
 int sched_has_other_runnable(void);                //for the boot loop
 void task_reap(struct task* t);     //unlink a DONE task from the run queue and free it
 

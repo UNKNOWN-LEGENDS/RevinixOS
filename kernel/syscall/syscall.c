@@ -4,20 +4,20 @@
 #include "../drivers/serial.h"
 #include <stdint.h>
 #include "../mm/uaccess.h"
+#include "../sched/sched.h"
 
 extern void syscall_entry(void);
 void set_gate_external(int vec, void* handler, uint8_t type_attr);
 
-// task_exit lives in the scheduler; used by SYS_EXIT
-void task_exit(void);
-
-// SYS_WRITE: write `count` bytes from the user buffer `ubuf` to the console.
-// Returns bytes written, or -EFAULT if any byte of the buffer isn't valid
-// user memory (nothing is printed in that case).
+// SYS_WRITE(fd, buf, count): write `count` bytes from the user buffer to fd.
+// For now only fd 1 (stdout) and fd 2 (stderr) exist; both go to the console.
+// Returns bytes written, -EBADF for any other fd, or -EFAULT if any byte of
+// the buffer isn't valid user memory (nothing is printed in that case).
 #define WRITE_MAX   (1024 * 1024)      // one call may print at most 1 MB
 #define WRITE_CHUNK 256
 
-static int64_t sys_write(uint64_t ubuf, uint64_t count) {
+static int64_t sys_write(uint64_t fd, uint64_t ubuf, uint64_t count) {
+    if (fd != 1 && fd != 2) return -EBADF;
     if (count > WRITE_MAX) return -EINVAL;
     if (!user_range_ok(ubuf, count, 0)) return -EFAULT;   // check it all before printing any
 
@@ -40,17 +40,16 @@ void syscall_dispatch(struct interrupt_frame* frame) {
     uint64_t num = frame->rax;   // syscall number
     uint64_t a1  = frame->rdi;   // arg1
     uint64_t a2  = frame->rsi;   // arg2
-    // uint64_t a3 = frame->rdx; // arg3 (unused for now)
+    uint64_t a3 = frame->rdx; // arg3 (unused for now)
 
     int64_t ret = -1;
 
     switch (num) {
         case SYS_WRITE:
-            ret = sys_write(a1, a2);
+            ret = sys_write(a1, a2, a3);
             break;
         case SYS_EXIT:
-            kprintf("\n[SYS_EXIT called by user program, code=%d]\n", (int)a1);
-            task_exit();          // does not return
+            task_exit_with((int)a1);          // does not return
             break;
         default:
             kprintf("[unknown syscall %d]\n", (int)num);

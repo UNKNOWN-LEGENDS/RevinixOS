@@ -10,6 +10,7 @@
 #include "mm/pmm.h"
 #include "gui/desktop.h"
 #include "drivers/mouse.h"
+#include "arch/x86_64/idt.h"
 
 // These live in main.c; declare them so the shell can launch a process.
 extern struct fat32_fs g_fs;                       // the mounted filesystem (see main.c note)
@@ -199,19 +200,22 @@ static struct task* start_program(const char* name) {
 static void cmd_run(char* args) {
     char*        names[RUN_MAX];
     struct task* procs[RUN_MAX];
-    int n = 0;
+    int n = 0, given = 0;
 
     char* p = args;
     while (*p && n < RUN_MAX) {             // split the arguments on spaces
         while (*p == ' ') p++;
         if (!*p) break;
         names[n] = p;
+        given++;
         while (*p && *p != ' ') p++;
         if (*p) *p++ = '\0';
         procs[n] = start_program(names[n]);
         if (procs[n]) n++;
     }
-    if (n == 0) { kprintf("usage: run <file> [file ...]  (up to %d at once)\n", RUN_MAX); return; }
+
+    if (given == 0) { kprintf("usage: run <file> [file ...] (up to %d at once)\n", RUN_MAX); return; }
+    if (n == 0) return;
 
     for (;;) {                               // wait until every one has exited
         int running = 0;
@@ -222,8 +226,13 @@ static void cmd_run(char* args) {
     }
 
     for (int i = 0; i < n; i++) {
+        int code   = procs[i]->exit_code;      // read before task_reap frees it
+        int killed = procs[i]->killed_by;
         task_reap(procs[i]);
-        kprintf("run: '%s' finished.\n", names[i]);
+        if (killed >= 0)
+            kprintf("run: '%s' killed (%s)\n", names[i], exception_name(killed));
+        else
+            kprintf("run: '%s' exited with code %d\n", names[i], code);
     }
 }
 

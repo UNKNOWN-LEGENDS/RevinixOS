@@ -14,5 +14,6 @@ struct interrupt_frame {
 };
 
 void idt_init(void);
+const char* exception_name(int vector);
 
 #endif

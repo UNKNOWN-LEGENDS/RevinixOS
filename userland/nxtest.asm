@@ -1,17 +1,8 @@
 ; nxtest.asm - writes 6 bytes of machine code onto its stack and calls them.
 ; Without NX they run and return 42. With NX the CPU refuses to fetch
 ; instructions from the (non-executable) stack page and the task is killed.
+%include "sys.inc"
 bits 64
-
-%define SYS_WRITE 1
-%define SYS_EXIT  2
-
-%macro PRINT 2
-    mov rax, SYS_WRITE
-    mov rdi, %1
-    mov rsi, %2
-    int 0x80
-%endmacro
 
 section .text
 global _start
@@ -26,11 +17,7 @@ _start:
     jne .exit
     PRINT m2, m2_len
 .exit:
-    mov rax, SYS_EXIT
-    xor rdi, rdi
-    int 0x80
-.hang:
-    jmp .hang
+    EXIT 0
 
 section .rodata
 m1: db "[nxtest] copying code onto the stack and calling it ...", 0x0A

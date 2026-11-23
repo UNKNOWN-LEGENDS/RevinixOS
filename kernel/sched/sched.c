@@ -84,6 +84,8 @@ struct task* task_create(void (*entry)(void)) {
     t->id = next_id++;
     t->state = TASK_READY;
     t->fpu = fpu_alloc_state();
+    t->exit_code = 0;
+    t->killed_by = -1;
 
     // append to the circular list (preserve creation order)
     struct task* p = task_list;
@@ -119,6 +121,9 @@ struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack
     t->id = next_id++;
     t->state = TASK_READY;
     t->fpu = fpu_alloc_state();
+
+    t->exit_code = 0;
+    t->killed_by = -1;
 
     struct task* p = task_list;
     while (p->next != task_list) p = p->next;
@@ -158,11 +163,22 @@ void yield(void) {
     schedule();
 }
 
-void task_exit(void) {
-    kprintf("[task %d exiting]\n", current->id);
+void task_exit_with(int code) {
+    current->exit_code = code;
     current->state = TASK_DONE;
     schedule();                  // switch away for good
     for (;;) __asm__ volatile ("hlt");   // unreachable if others exist
+}
+
+// Kernel tasks end here when their entry function returns (task_entry.asm
+// and the safety-net return address call it with no arguments).
+void task_exit(void) {
+    task_exit_with(0);
+}
+
+void task_kill(int vector) {
+    current->killed_by = vector;
+    task_exit_with(-1);
 }
 
 int sched_has_other_runnable(void) {

@@ -53,6 +53,10 @@ static const char* exception_names[32] = {
     "Hypervisor Injection", "VMM Communication", "Security", "Reserved"
 };
 
+const char* exception_name(int vector) {
+    return (vector >= 0 && vector < 32) ? exception_names[vector] : "Unknown";
+}
+
 void idt_init(void) {
     //install the first 32 vectors = CPU exceptions
     for (int i=0; i<32; i++) {
@@ -82,7 +86,7 @@ static void user_fault(struct interrupt_frame* frame) {
                 (e & 0x01) ? "page protection violation" : "page not mapped");
     }
     kprintf("[fault] killing the task\n");
-    task_exit();
+    task_kill((int)frame->int_no);
 }
 
 //the single C entry point every exception stub jumps to

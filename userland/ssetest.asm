@@ -2,17 +2,8 @@
 ; Fills xmm0-xmm15 with values only this run uses, burns CPU so the timer
 ; switches to other tasks many times, then checks every register.
 ; Run two copies at once:  run SSETEST.ELF SSETEST.ELF
+%include "sys.inc"
 bits 64
-
-%define SYS_WRITE 1
-%define SYS_EXIT  2
-
-%macro PRINT 2
-    mov rax, SYS_WRITE
-    mov rdi, %1
-    mov rsi, %2
-    int 0x80
-%endmacro
 
 section .text
 global _start
@@ -49,17 +40,11 @@ _start:
     dec r13
     jnz .round
 
-    mov rax, SYS_EXIT
-    xor rdi, rdi
-    int 0x80
+    EXIT 0
 
 .corrupt:
     PRINT bad, bad_len
-    mov rax, SYS_EXIT
-    mov rdi, 1
-    int 0x80
-.hang:
-    jmp .hang
+    EXIT 1
 
 section .rodata
 ok:  db "[ssetest] xmm0-xmm15 intact", 0x0A

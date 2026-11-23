@@ -7,6 +7,7 @@
 #define SYS_EXIT 2
 
 // Error codes, returned to user programs as negative numbers (Linux style).
+#define EBADF 9
 #define EFAULT 14       // bad address
 #define EINVAL 22       // invalid argument
 

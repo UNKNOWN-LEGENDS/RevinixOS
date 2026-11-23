@@ -121,20 +121,8 @@ $(BUILD)/elf.o: kernel/user/elf.c
 	mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $< -o $@
 
-userland/hello.elf: userland/hello.asm userland/user.ld
-	nasm -f elf64 userland/hello.asm -o userland/hello.o
-	x86_64-elf-ld -T userland/user.ld userland/hello.o -o userland/hello.elf
-
-userland/ptrtest.elf: userland/ptrtest.asm userland/user.ld
-	nasm -f elf64 userland/ptrtest.asm -o userland/ptrtest.o
-	x86_64-elf-ld -T userland/user.ld userland/ptrtest.o -o userland/ptrtest.elf
-
-userland/ssetest.elf: userland/ssetest.asm userland/user.ld
-	nasm -f elf64 userland/ssetest.asm -o userland/ssetest.o
-	x86_64-elf-ld -T userland/user.ld userland/ssetest.o -o userland/ssetest.elf
-
-userland/%.elf: userland/%.asm userland/user.ld
-	nasm -f elf64 $< -o userland/$*.o
+userland/%.elf: userland/%.asm userland/sys.inc userland/user.ld
+	nasm -f elf64 -i userland/ $< -o userland/$*.o
 	x86_64-elf-ld -T userland/user.ld userland/$*.o -o $@
 
 $(BUILD)/ata.o: kernel/drivers/ata.c
