@@ -27,7 +27,8 @@ static uint8_t* ensure_user_page(uint64_t pml4, uint64_t vaddr) {
     return (uint8_t*)phys_to_virt(phys);
 }
 
-uint64_t elf_load(uint64_t pml4, const uint8_t* image, uint64_t image_size) {
+uint64_t elf_load(uint64_t pml4, const uint8_t* image, uint64_t image_size, uint64_t* image_end) {
+    *image_end = 0;
     if (image_size < sizeof(struct elf64_ehdr)) {
         kprintf("ELF: image too small\n");
         return 0;
@@ -94,6 +95,7 @@ uint64_t elf_load(uint64_t pml4, const uint8_t* image, uint64_t image_size) {
             vaddr > USER_IMAGE_MAX - memsz) {
             kprintf("ELF: segment %p (+%d bytes) outside the user image area - refused\n",
                     (void*)vaddr, (int)memsz);
+            if (vaddr + memsz > *image_end) *image_end = vaddr + memsz; 
             return 0;
         }
 

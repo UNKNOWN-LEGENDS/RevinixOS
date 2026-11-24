@@ -67,6 +67,7 @@ const char* strerror(int err) {
     switch (err) {
         case ENOENT:       return "no such file";
         case EBADF:        return "bad file descriptor";
+        case ENOMEM:       return "out of memory";
         case EFAULT:       return "bad address";
         case EINVAL:       return "invalid argument";
         case EMFILE:       return "too many open files";

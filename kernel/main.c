@@ -23,6 +23,7 @@
 #include "drivers/mouse.h"
 #include "arch/x86_64/fpu.h"
 #include "user/layout.h"
+#include "arch/x86_64/irqflags.h"
 
 void irq_install(void);
 
@@ -115,7 +116,8 @@ struct fat32_fs g_fs;
 
 struct task* spawn_user_process(const uint8_t* image, uint64_t size) {
     uint64_t pml4 = vmm_create_address_space();
-    uint64_t entry = elf_load(pml4, image, size);
+    uint64_t image_end;
+    uint64_t entry = elf_load(pml4, image, size, &image_end);
     if (!entry) {
         kprintf("ELF load failed.\n");
         vmm_destroy_address_space(pml4);
@@ -137,7 +139,14 @@ struct task* spawn_user_process(const uint8_t* image, uint64_t size) {
         vmm_map_page_in(pml4, a, f, PAGE_WRITABLE | PAGE_USER | vmm_nx());
     }
 
-    return task_create_user(entry, pml4, USER_STACK_TOP);
+    // Create the task and set its heap in one go, with interrupts off: the
+    // task is runnable the moment it exists, and must never run (and call
+    // brk) before brk_start is set.
+    uint64_t flags = irq_save();
+    struct task* t = task_create_user(entry, pml4, USER_STACK_TOP);
+    t->brk_start = t->brk = (image_end + 4095) & ~4095ull;   // heap starts empty
+    irq_restore(flags);
+    return t;
 }
 
 // Load a named program through the VFS into a heap buffer sized to the file.

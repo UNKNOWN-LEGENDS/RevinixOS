@@ -29,6 +29,24 @@ int close(int fd) {
     return (int)check(__syscall3(SYS_CLOSE, fd, 0, 0));
 }
 
+// The current program break, cached so sbrk() doesn't need to ask each time.
+static char* cur_brk = 0;
+
+int brk(void* addr) {
+    long r = __syscall3(SYS_BRK, (long)addr, 0, 0);    // returns the break it ended up at
+    cur_brk = (char*)r;
+    if (r != (long)addr) { errno = ENOMEM; return -1; }
+    return 0;
+}
+
+void* sbrk(intptr_t increment) {
+    if (!cur_brk) cur_brk = (char*)__syscall3(SYS_BRK, 0, 0, 0);
+    char* old = cur_brk;
+    if (increment == 0) return old;
+    if (brk(old + increment) != 0) return (void*)-1;
+    return old;
+}
+
 void exit(int code) {
     __syscall3(SYS_EXIT, code, 0, 0);
     for (;;) { }                    // the kernel never returns here

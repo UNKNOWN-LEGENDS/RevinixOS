@@ -133,7 +133,7 @@ USER_CFLAGS := -ffreestanding -fno-stack-protector -fno-pic -fno-pie -O2 \
                -Wall -Wextra -fno-asynchronous-unwind-tables \
                -I userland/libc/include
 LIBC_OBJS := userland/libc/crt0.o userland/libc/syscall.o userland/libc/string.o \
-             userland/libc/stdio.o userland/libc/stdlib.o
+             userland/libc/stdio.o userland/libc/stdlib.o userland/libc/malloc.o
 LIBC_HDRS := $(wildcard userland/libc/include/*.h userland/libc/include/sys/*.h)
 
 # Keep the libc objects between builds (make would otherwise delete them as
@@ -268,7 +268,8 @@ run: $(ISO) disk-load
 disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf \
           userland/faulttest.elf userland/nxtest.elf userland/wxtest.elf \
 		  userland/cattest.elf userland/echotest.elf userland/stacktest.elf \
-		  userland/lowelf.elf userland/kernelf.elf userland/chello.elf
+		  userland/lowelf.elf userland/kernelf.elf userland/chello.elf \
+		  userland/memtest.elf
 	qemu-img create -f raw disk.img 16M
 	mkfs.vfat -F 32 -n REVINIX disk.img
 	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
@@ -284,6 +285,7 @@ disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf \
 	mcopy -i disk.img userland/lowelf.elf ::/LOWELF.ELF
 	mcopy -i disk.img userland/kernelf.elf ::/KERNELF.ELF
 	mcopy -i disk.img userland/chello.elf ::/CHELLO.ELF
+	mcopy -i disk.img userland/memtest.elf ::/MEMTEST.ELF
 
 myos.iso: $(ISO_DIR)/boot/kernel.bin disk.img
 	cp disk.img $(ISO_DIR)/boot/disk.img

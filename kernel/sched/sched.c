@@ -90,6 +90,7 @@ struct task* task_create(void (*entry)(void)) {
     t->exit_code = 0;
     t->killed_by = -1;
     fd_table_init(t->fds);      // fd 0, 1, 2 -> console
+    t->brk_start = t->brk = 0;
 
     // append to the circular list (preserve creation order)
     struct task* p = task_list;
@@ -129,6 +130,7 @@ struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack
     t->exit_code = 0;
     t->killed_by = -1;
     fd_table_init(t->fds);      // fd 0, 1, 2 -> console
+    t->brk_start = t->brk = 0;;
 
     struct task* p = task_list;
     while (p->next != task_list) p = p->next;

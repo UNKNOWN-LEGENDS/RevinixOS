@@ -17,6 +17,8 @@ struct task {
     int exit_code;
     int killed_by;
     struct file* fds[MAX_FDS];  // open files: fd number -> file (NULL = free)
+    uint64_t brk_start;         //user heap: first byte (page after the image)
+    uint64_t brk;               //user heap: current end ("program break")
 };
 
 struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack_top);

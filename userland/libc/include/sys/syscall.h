@@ -7,6 +7,7 @@
 #define SYS_OPEN  3
 #define SYS_READ  4
 #define SYS_CLOSE 5
+#define SYS_BRK 6
 
 // Raw syscall: rax = number, rdi/rsi/rdx = arguments, result in rax
 // (negative = -errno). The kernel preserves every other register.

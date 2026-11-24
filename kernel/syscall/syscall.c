@@ -8,6 +8,9 @@
 #include "../fs/file.h"
 #include "../mm/heap.h"
 #include "../drivers/keyboard.h"
+#include "../mm/pmm.h"
+#include "../mm/vmm.h"
+#include "../user/layout.h"
 
 extern void syscall_entry(void);
 void set_gate_external(int vec, void* handler, uint8_t type_attr);
@@ -136,6 +139,46 @@ static int64_t sys_close(uint64_t fd) {
     return fd_close(sched_current()->fds, (int64_t)fd);
 }
 
+// SYS_BRK(addr): move the end of the caller's heap ("program break") to addr.
+// addr = 0 just asks where it is. Growing maps fresh zeroed rw- pages,
+// shrinking unmaps and frees them. Returns the new break, or the OLD break
+// if the request was refused (outside the heap area, or out of memory) -
+// the same convention as Linux.
+static int64_t sys_brk(uint64_t addr) {
+    struct task* t = sched_current();
+    if (addr == 0) return (int64_t)t->brk;
+    if (addr < t->brk_start || addr > t->brk_start + USER_HEAP_MAX || addr > USER_IMAGE_MAX)
+        return (int64_t)t->brk;
+
+    uint64_t old_end = (t->brk + 4095) & ~4095ull;     // first page NOT in the heap
+    uint64_t new_end = (addr + 4095) & ~4095ull;
+
+    if (new_end > old_end) {                           // grow
+        for (uint64_t a = old_end; a < new_end; a += 4096) {
+            uint64_t f = pmm_alloc_frame();
+            if (!f) {                                  // out of memory: undo this call
+                for (uint64_t u = old_end; u < a; u += 4096) {
+                    uint64_t p = vmm_get_phys_in(t->pml4, u);
+                    vmm_unmap_page_in(t->pml4, u);
+                    pmm_free_frame(p);
+                }
+                return (int64_t)t->brk;
+            }
+            uint8_t* page = (uint8_t*)phys_to_virt(f);
+            for (int i = 0; i < 4096; i++) page[i] = 0;
+            vmm_map_page_in(t->pml4, a, f, PAGE_WRITABLE | PAGE_USER | vmm_nx());
+        }
+    } else {                                           // shrink
+        for (uint64_t a = new_end; a < old_end; a += 4096) {
+            uint64_t p = vmm_get_phys_in(t->pml4, a);
+            vmm_unmap_page_in(t->pml4, a);             // also flushes the TLB entry
+            pmm_free_frame(p);
+        }
+    }
+    t->brk = addr;
+    return (int64_t)addr;
+}
+
 // The C dispatcher. Reads the syscall number and args from the saved frame,
 // and writes the return value back into the frame's rax slot.
 void syscall_dispatch(struct interrupt_frame* frame) {
@@ -161,6 +204,9 @@ void syscall_dispatch(struct interrupt_frame* frame) {
             break;
         case SYS_CLOSE:
             ret = sys_close(a1);
+            break;
+        case SYS_BRK:
+            ret = sys_brk(a1);
             break;
         default:
             ret = -ENOSYS;
