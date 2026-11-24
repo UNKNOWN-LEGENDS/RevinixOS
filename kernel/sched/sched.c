@@ -5,6 +5,7 @@
 #include "../mm/vmm.h"
 #include "../arch/x86_64/gdt.h"
 #include "../arch/x86_64/fpu.h"
+#include "../arch/x86_64/irqflags.h"
 
 #define STACK_SIZE 16384       // 16 KB kernel stack per task
 
@@ -136,7 +137,14 @@ struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack
     return t;
 }
 
+// Interrupts must be OFF for the whole switch. yield() calls this with them
+// on; if the timer fired halfway (after `current = next` but before
+// context_switch), its nested schedule() would treat `next` as the running
+// task and save the WRONG stack pointer into it -> a corrupted task.
+// Each task saves its own RFLAGS here and restores them when it is
+// switched back to, right after context_switch returns.
 void schedule(void) {
+    uint64_t flags = irq_save();
     if (!current) return;
 
     struct task* prev = current;
@@ -146,7 +154,7 @@ void schedule(void) {
     while (next->state == TASK_DONE && next != prev)
         next = next->next;
 
-    if (next == prev) return;    // nobody else runnable; keep running prev
+    if (next == prev) { irq_restore(flags); return; }    // nobody else runnable; keep running prev
 
     if (prev->state == TASK_RUNNING) prev->state = TASK_READY;
     next->state = TASK_RUNNING;
@@ -161,6 +169,7 @@ void schedule(void) {
 
     context_switch(&prev->rsp, next->rsp);
     // execution resumes here when someone later switches back to prev
+    irq_restore(flags);
 }
 
 void yield(void) {
