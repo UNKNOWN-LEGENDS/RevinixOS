@@ -12,6 +12,8 @@
 #include "../mm/vmm.h"
 #include "../user/layout.h"
 #include "../../userland/libc/include/errno.h"
+#include "../arch/x86_64/timer.h"
+#include "../drivers/rtc.h"
 
 extern void syscall_entry(void);
 void set_gate_external(int vec, void* handler, uint8_t type_attr);
@@ -181,6 +183,36 @@ static int64_t sys_brk(uint64_t addr) {
     return (int64_t)addr;
 }
 
+// SYS_GETPID(): the caller's task id.
+static int64_t sys_getpid(void) {
+    return sched_current()->id;
+}
+
+// SYS_SLEEP(ms): sleep for at least `ms` milliseconds. The timer ticks every
+// 10 ms, so this rounds UP to whole ticks, plus one: we're already partway
+// through the current tick, and waking early would break "at least".
+// sleep(0) just gives up the rest of the time slice.
+#define SLEEP_MAX_MS (24ull * 60 * 60 * 1000)      // one day per call
+
+static int64_t sys_sleep(uint64_t ms) {
+    if (ms > SLEEP_MAX_MS) return -EINVAL;
+    if (ms == 0) { yield(); return 0; }
+    uint64_t ticks = (ms + MS_PER_TICK - 1) / MS_PER_TICK;
+    task_sleep_until(get_ticks() + ticks + 1);
+    return 0;
+}
+
+// SYS_UPTIME(): milliseconds since boot, in steps of 10 ms. Never goes
+// backwards - use it to measure how long something took.
+static int64_t sys_uptime(void) {
+    return (int64_t)(get_ticks() * MS_PER_TICK);
+}
+
+// SYS_TIME(): wall-clock time from the RTC, in seconds since 1970 (Unix time).
+static int64_t sys_time(void) {
+    return (int64_t)rtc_unix_time();
+}
+
 // The C dispatcher. Reads the syscall number and args from the saved frame,
 // and writes the return value back into the frame's rax slot.
 void syscall_dispatch(struct interrupt_frame* frame) {
@@ -209,6 +241,18 @@ void syscall_dispatch(struct interrupt_frame* frame) {
             break;
         case SYS_BRK:
             ret = sys_brk(a1);
+            break;
+        case SYS_GETPID:
+            ret = sys_getpid();
+            break;
+        case SYS_SLEEP:
+            ret = sys_sleep(a1);
+            break;
+        case SYS_UPTIME:
+            ret = sys_uptime();
+            break;
+        case SYS_TIME:
+            ret = sys_time();
             break;
         default:
             ret = -ENOSYS;

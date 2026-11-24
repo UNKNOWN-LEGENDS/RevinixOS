@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include "../../drivers/keyboard.h"
 #include "../../drivers/mouse.h"
+#include "timer.h"
 
 extern void* irq_stub_table[];
 void set_gate_external(int vec, void* handler, uint8_t type_attr); // from idt.c
@@ -28,7 +29,7 @@ void irq_install(void) {
     for (int i = 0; i < 16; i++) {
         set_gate_external(32 + i, irq_stub_table[i], 0x8E);
     }
-    pit_init(100);                 // 100 Hz = one tick every 10 ms
+    pit_init(TIMER_HZ);                 // 100 Hz = one tick every 10 ms
     pic_clear_mask(0);             // unmask timer (IRQ0)
     pic_clear_mask(1);             // unmask keyboard (IRQ1)
 }

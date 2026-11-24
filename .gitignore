@@ -4,3 +4,6 @@ myos.iso
 disk.img
 iso/boot/kernel.bin
 iso/boot/disk.img
+userland/*.o 
+userland/*.elf
+userland/libc/*.o

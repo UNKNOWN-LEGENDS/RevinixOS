@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <time.h>
 
 int errno = 0;
 
@@ -45,6 +46,29 @@ void* sbrk(intptr_t increment) {
     if (increment == 0) return old;
     if (brk(old + increment) != 0) return (void*)-1;
     return old;
+}
+
+pid_t getpid(void) {
+    return (pid_t)__syscall3(SYS_GETPID, 0, 0, 0);
+}
+
+int msleep(unsigned ms) {
+    return (int)check(__syscall3(SYS_SLEEP, ms, 0, 0));
+}
+
+unsigned sleep(unsigned seconds) {
+    msleep(seconds * 1000u);          // the kernel allows up to one day per call
+    return 0;
+}
+
+long uptime_ms(void) {
+    return __syscall3(SYS_UPTIME, 0, 0, 0);
+}
+
+time_t time(time_t* t) {
+    time_t now = __syscall3(SYS_TIME, 0, 0, 0);
+    if (t) *t = now;
+    return now;
 }
 
 void exit(int code) {

@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 typedef long ssize_t;
+typedef int pid_t;
 
 #define STDIN_FILENO  0
 #define STDOUT_FILENO 1
@@ -18,5 +19,11 @@ int     close(int fd);
 // malloc() instead.
 int     brk(void* addr);
 void*   sbrk(intptr_t increment);
+pid_t    getpid(void);
+unsigned sleep(unsigned seconds);     // always returns 0 (nothing can wake us early yet)
+
+// Not POSIX, RevinixOS only:
+int      msleep(unsigned ms);         // sleep at least `ms` milliseconds
+long     uptime_ms(void);             // milliseconds since boot (10 ms steps)
 
 #endif

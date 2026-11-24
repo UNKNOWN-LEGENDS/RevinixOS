@@ -8,6 +8,10 @@
 #define SYS_READ  4
 #define SYS_CLOSE 5
 #define SYS_BRK 6
+#define SYS_GETPID 7
+#define SYS_SLEEP  8
+#define SYS_UPTIME 9
+#define SYS_TIME   10
 
 // Raw syscall: rax = number, rdi/rsi/rdx = arguments, result in rax
 // (negative = -errno). The kernel preserves every other register.

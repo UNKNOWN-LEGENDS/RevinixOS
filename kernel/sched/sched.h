@@ -3,7 +3,7 @@
 #include<stdint.h>
 #include "../fs/file.h"
 
-enum task_state { TASK_READY, TASK_RUNNING, TASK_DONE };
+enum task_state { TASK_READY, TASK_RUNNING, TASK_SLEEPING, TASK_DONE };
 
 struct task {
     uint64_t rsp;               //saved stack pointer (must be first field)
@@ -19,6 +19,7 @@ struct task {
     struct file* fds[MAX_FDS];  // open files: fd number -> file (NULL = free)
     uint64_t brk_start;         //user heap: first byte (page after the image)
     uint64_t brk;               //user heap: current end ("program break")
+    uint64_t wake_tick;         //TASK_SLEEPING: timer tick to wake up at
 };
 
 struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack_top);
@@ -33,5 +34,6 @@ void task_kill(int vector);
 int sched_has_other_runnable(void);                //for the boot loop
 void task_reap(struct task* t);     //unlink a DONE task from the run queue and free it
 struct task* sched_current(void);   // the task that is running right now
+void task_sleep_until(uint64_t tick);   // block the current task until get_ticks() >= tick
 
 #endif

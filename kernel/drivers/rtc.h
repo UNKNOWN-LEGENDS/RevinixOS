@@ -13,4 +13,9 @@ struct rtc_time {
 
 void rtc_read(struct rtc_time* t);
 
+// The RTC's date and time as seconds since 1970-01-01 00:00:00 (Unix time).
+// The chip doesn't know its time zone, so this is only true UTC if the
+// RTC is set to UTC (see above).
+uint64_t rtc_unix_time(void);
+
 #endif

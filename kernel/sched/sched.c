@@ -6,6 +6,7 @@
 #include "../arch/x86_64/gdt.h"
 #include "../arch/x86_64/fpu.h"
 #include "../arch/x86_64/irqflags.h"
+#include "../arch/x86_64/timer.h"
 
 #define STACK_SIZE 16384       // 16 KB kernel stack per task
 
@@ -139,6 +140,14 @@ struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack
     return t;
 }
 
+// Can it run right now? A sleeper whose wake-up tick has come becomes READY here,
+// so sleeping tasks need no separate timer list. Interrupts must be off.
+static int task_runnable(struct task* t) {
+    if (t->state == TASK_SLEEPING && get_ticks() >= t->wake_tick)
+        t->state = TASK_READY;
+    return t->state == TASK_READY || t->state == TASK_RUNNING;
+}
+
 // Interrupts must be OFF for the whole switch. yield() calls this with them
 // on; if the timer fired halfway (after `current = next` but before
 // context_switch), its nested schedule() would treat `next` as the running
@@ -147,13 +156,13 @@ struct task* task_create_user(uint64_t entry, uint64_t pml4, uint64_t user_stack
 // switched back to, right after context_switch returns.
 void schedule(void) {
     uint64_t flags = irq_save();
-    if (!current) return;
+    if (!current) { irq_restore(flags); return; }
 
     struct task* prev = current;
     struct task* next = prev->next;
 
     // skip finished tasks
-    while (next->state == TASK_DONE && next != prev)
+    while (next != prev && !task_runnable(next))
         next = next->next;
 
     if (next == prev) { irq_restore(flags); return; }    // nobody else runnable; keep running prev
@@ -176,6 +185,21 @@ void schedule(void) {
 
 void yield(void) {
     schedule();
+}
+
+// Take the current task off the CPU until the timer reaches `tick`. The
+// scheduler skips it meanwhile, so other tasks get all the time.
+void task_sleep_until(uint64_t tick) {
+    uint64_t flags = irq_save();
+    current->wake_tick = tick;
+    current->state = TASK_SLEEPING;
+    while (!task_runnable(current)) {
+        schedule();                         // returns once we're picked again...
+        if (!task_runnable(current))        // ...or at once if nobody else can run:
+            __asm__ volatile ("sti; hlt; cli");   // then idle until the next tick
+    }
+    current->state = TASK_RUNNING;
+    irq_restore(flags);
 }
 
 struct task* sched_current(void) {

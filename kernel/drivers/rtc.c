@@ -1,5 +1,6 @@
 #include "rtc.h"
 #include "../arch/x86_64/io.h"
+#include "../arch/x86_64/irqflags.h"
 
 #define CMOS_ADDR 0x70
 #define CMOS_DATA 0x71
@@ -28,8 +29,7 @@ static void read_raw(struct rtc_time* t) {
 static uint8_t bcd_to_bin(uint8_t v) { return (uint8_t)((v & 0x0F) + (v >> 4) * 10); }
 
 void rtc_read(struct rtc_time* t) {
-    // Read until two reads in a row agree, so we never mix the seconds from
-    // before a tick with the minutes from after it.
+    uint64_t flags = irq_save();
     struct rtc_time a, b;
     read_raw(&b);
     do {
@@ -39,6 +39,7 @@ void rtc_read(struct rtc_time* t) {
              a.day != b.day || a.month != b.month || a.year != b.year);
 
     uint8_t regB = cmos_read(0x0B);
+    irq_restore(flags);
     uint8_t pm   = b.hour & 0x80;            // 12-hour mode keeps PM in bit 7
     b.hour &= 0x7F;
 
@@ -57,4 +58,22 @@ void rtc_read(struct rtc_time* t) {
 
     b.year += 2000;                           // the chip only stores 2 digits
     *t = b;
+}
+
+// Days from 1970-01-01 to year-month-day (Howard Hinnant's days_from_civil).
+// Years start in March here, so the leap day is the LAST day of the year.
+static int64_t days_from_civil(int64_t y, unsigned m, unsigned d) {
+    y -= (m <= 2);
+    int64_t  era = y / 400;                       // the RTC gives y >= 2000
+    unsigned yoe = (unsigned)(y - era * 400);     // year of the 400-year era
+    unsigned doy = (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1;   // day of year
+    unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;            // day of era
+    return era * 146097 + (int64_t)doe - 719468;  // 719468 = days 0000-03-01 -> 1970-01-01
+}
+
+uint64_t rtc_unix_time(void) {
+    struct rtc_time t;
+    rtc_read(&t);
+    return (uint64_t)days_from_civil(t.year, t.month, t.day) * 86400
+         + (uint64_t)t.hour * 3600 + (uint64_t)t.minute * 60 + t.second;
 }
