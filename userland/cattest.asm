@@ -78,8 +78,8 @@ _start:
     READ r12, readme, 4                     ; buffer in our own read-only data
     CHECK EFAULT, e5, e5_len
     CLOSE r12
-    READ STDIN, buf, 16                     ; keyboard input comes in 2b.3
-    CHECK ENOSYS, e6, e6_len
+    READ STDIN, 0xFFFFFFFF80100000, 16      ; stdin into the kernel: refused before waiting
+    CHECK EFAULT, e6, e6_len
 
     ; open README.TXT until the fd table is full (fds 3..15 = 13 opens)
     mov rbx, 20
@@ -141,7 +141,7 @@ e4: db "[cattest] read into kernel .... "
 e4_len equ $ - e4
 e5: db "[cattest] read into r/o data .. "
 e5_len equ $ - e5
-e6: db "[cattest] read stdin (2b.3) ... "
+e6: db "[cattest] stdin into kernel ... "
 e6_len equ $ - e6
 e7: db "[cattest] fd table full ....... "
 e7_len equ $ - e7

@@ -7,6 +7,7 @@
 #include "../sched/sched.h"
 #include "../fs/file.h"
 #include "../mm/heap.h"
+#include "../drivers/keyboard.h"
 
 extern void syscall_entry(void);
 void set_gate_external(int vec, void* handler, uint8_t type_attr);
@@ -64,16 +65,54 @@ static int64_t sys_open(uint64_t upath, uint64_t flags) {
     return fd;
 }
 
+// ---- keyboard input (fd 0) ----
+// "Line mode", like a Unix terminal: read() waits until the user presses
+// Enter, then hands out the line plus '\n'. If the program asks for fewer
+// bytes than the line holds, the rest is kept for its next read().
+#define CONSOLE_LINE_MAX 130            // 128 chars + '\n' + NUL
+
+static char     con_line[CONSOLE_LINE_MAX];
+static uint32_t con_len = 0;            // bytes in con_line
+static uint32_t con_pos = 0;            // next byte to hand out
+
+static int64_t console_read(uint64_t ubuf, uint64_t count) {
+    if (count == 0) return 0;
+    if (!user_range_ok(ubuf, count, 1)) return -EFAULT;   // check BEFORE waiting
+
+    if (con_pos == con_len) {                // nothing left over: wait for a new line
+        char line[CONSOLE_LINE_MAX - 1];
+        // We're inside int 0x80, so interrupts are off. Turn them on while we
+        // wait, or the keyboard IRQ could never deliver the line.
+        __asm__ volatile ("sti");
+        while (!keyboard_poll_line(line, sizeof(line))) {
+            yield();                         // let other tasks run
+            __asm__ volatile ("sti; hlt");   // then sleep until the next interrupt
+        }
+        uint32_t n = 0;
+        while (line[n] && n < sizeof(line) - 1) { con_line[n] = line[n]; n++; }
+        con_line[n++] = '\n';
+        con_len = n;
+        con_pos = 0;
+    }
+
+    uint64_t take = con_len - con_pos;
+    if (take > count) take = count;
+    if (copy_to_user(ubuf, con_line + con_pos, take) != 0) return -EFAULT;
+    con_pos += (uint32_t)take;
+    return (int64_t)take;
+}
+
 // SYS_READ(fd, buf, count): read up to `count` bytes from fd into the user
 // buffer, advancing the file position. Returns bytes read (0 = end of file),
-// -EBADF, -EFAULT (buffer isn't writable user memory) or -ENOSYS (keyboard
-// input arrives in 2b.3).
+// -EBADF or -EFAULT (buffer isn't writable user memory). fd 0 waits for a
+// line from the keyboard.
+
 #define READ_CHUNK 512
 
 static int64_t sys_read(uint64_t fd, uint64_t ubuf, uint64_t count) {
     struct file* f = fd_get(sched_current()->fds, (int64_t)fd);
     if (!f) return -EBADF;
-    if (f->kind == FILE_CONSOLE) return -ENOSYS;
+    if (f->kind == FILE_CONSOLE) return console_read(ubuf, count);
     if (count > WRITE_MAX) count = WRITE_MAX;
     if (!user_range_ok(ubuf, count, 1)) return -EFAULT;     // must be WRITABLE
 

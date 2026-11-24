@@ -233,7 +233,7 @@ run: $(ISO) disk-load
 
 disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf \
           userland/faulttest.elf userland/nxtest.elf userland/wxtest.elf \
-		  userland/cattest.elf
+		  userland/cattest.elf userland/echotest.elf
 	qemu-img create -f raw disk.img 16M
 	mkfs.vfat -F 32 -n REVINIX disk.img
 	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
@@ -244,6 +244,7 @@ disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf \
 	mcopy -i disk.img userland/nxtest.elf ::/NXTEST.ELF
 	mcopy -i disk.img userland/wxtest.elf ::/WXTEST.ELF
 	mcopy -i disk.img userland/cattest.elf ::/CATTEST.ELF
+	mcopy -i disk.img userland/echotest.elf ::/ECHOTEST.ELF
 
 myos.iso: $(ISO_DIR)/boot/kernel.bin disk.img
 	cp disk.img $(ISO_DIR)/boot/disk.img
