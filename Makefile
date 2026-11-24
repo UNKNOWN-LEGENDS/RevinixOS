@@ -126,6 +126,31 @@ $(BUILD)/elf.o: kernel/user/elf.c
 	mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $< -o $@
 
+# ---- C programs ----
+# User programs are compiled differently from the kernel: no -mcmodel=kernel,
+# SSE allowed (the kernel saves it per task), normal optimisation.
+USER_CFLAGS := -ffreestanding -fno-stack-protector -fno-pic -fno-pie -O2 \
+               -Wall -Wextra -fno-asynchronous-unwind-tables \
+               -I userland/libc/include
+LIBC_OBJS := userland/libc/crt0.o userland/libc/syscall.o userland/libc/string.o \
+             userland/libc/stdio.o userland/libc/stdlib.o
+LIBC_HDRS := $(wildcard userland/libc/include/*.h userland/libc/include/sys/*.h)
+
+# Keep the libc objects between builds (make would otherwise delete them as
+# "intermediate" files after each link).
+.SECONDARY: $(LIBC_OBJS)
+
+userland/libc/crt0.o: userland/libc/crt0.asm
+	nasm -f elf64 $< -o $@
+
+userland/libc/%.o: userland/libc/%.c $(LIBC_HDRS)
+	$(CC) $(USER_CFLAGS) -c $< -o $@
+
+# userland/NAME.c -> userland/NAME.elf, linked with crt0 + the mini libc
+userland/%.elf: userland/%.c $(LIBC_OBJS) $(LIBC_HDRS) userland/user.ld
+	$(CC) $(USER_CFLAGS) -c $< -o userland/$*.o
+	x86_64-elf-ld -T userland/user.ld $(LIBC_OBJS) userland/$*.o -o $@
+
 # Deliberately broken programs: linked at addresses the ELF loader must refuse.
 userland/lowelf.elf: userland/badelf.asm userland/sys.inc
 	nasm -f elf64 -i userland/ userland/badelf.asm -o userland/badelf.o
@@ -243,7 +268,7 @@ run: $(ISO) disk-load
 disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf \
           userland/faulttest.elf userland/nxtest.elf userland/wxtest.elf \
 		  userland/cattest.elf userland/echotest.elf userland/stacktest.elf \
-		  userland/lowelf.elf userland/kernelf.elf
+		  userland/lowelf.elf userland/kernelf.elf userland/chello.elf
 	qemu-img create -f raw disk.img 16M
 	mkfs.vfat -F 32 -n REVINIX disk.img
 	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
@@ -258,6 +283,7 @@ disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf \
 	mcopy -i disk.img userland/stacktest.elf ::/STACKTST.ELF
 	mcopy -i disk.img userland/lowelf.elf ::/LOWELF.ELF
 	mcopy -i disk.img userland/kernelf.elf ::/KERNELF.ELF
+	mcopy -i disk.img userland/chello.elf ::/CHELLO.ELF
 
 myos.iso: $(ISO_DIR)/boot/kernel.bin disk.img
 	cp disk.img $(ISO_DIR)/boot/disk.img
@@ -267,7 +293,7 @@ myos.iso: $(ISO_DIR)/boot/kernel.bin disk.img
 # 	qemu-system-x86_64 -cdrom myos.iso -serial stdio
 
 clean:
-	rm -rf $(BUILD) myos.iso $(ISO_DIR)/boot/kernel.bin $(ISO_DIR)/boot/disk.img
+	rm -rf $(BUILD) userland/libc/*.o myos.iso $(ISO_DIR)/boot/kernel.bin $(ISO_DIR)/boot/disk.img
 
 .PHONY: disk-load
 disk-load: disk.img
