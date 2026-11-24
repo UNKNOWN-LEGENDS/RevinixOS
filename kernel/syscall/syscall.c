@@ -11,6 +11,7 @@
 #include "../mm/pmm.h"
 #include "../mm/vmm.h"
 #include "../user/layout.h"
+#include "../../userland/libc/include/errno.h"
 
 extern void syscall_entry(void);
 void set_gate_external(int vec, void* handler, uint8_t type_attr);
@@ -146,6 +147,7 @@ static int64_t sys_close(uint64_t fd) {
 // the same convention as Linux.
 static int64_t sys_brk(uint64_t addr) {
     struct task* t = sched_current();
+    if (t->brk_start < USER_IMAGE_MIN) return -ENOMEM;      // no heap set up; never map the NULL area
     if (addr == 0) return (int64_t)t->brk;
     if (addr < t->brk_start || addr > t->brk_start + USER_HEAP_MAX || addr > USER_IMAGE_MAX)
         return (int64_t)t->brk;

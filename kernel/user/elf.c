@@ -94,10 +94,11 @@ uint64_t elf_load(uint64_t pml4, const uint8_t* image, uint64_t image_size, uint
         if (vaddr < USER_IMAGE_MIN || memsz > USER_IMAGE_MAX ||
             vaddr > USER_IMAGE_MAX - memsz) {
             kprintf("ELF: segment %p (+%d bytes) outside the user image area - refused\n",
-                    (void*)vaddr, (int)memsz);
-            if (vaddr + memsz > *image_end) *image_end = vaddr + memsz; 
+                    (void*)vaddr, (int)memsz); 
             return 0;
         }
+        
+        if (vaddr + memsz > *image_end) *image_end = vaddr + memsz;
 
         kprintf("ELF: loading segment vaddr=%p filesz=%d memsz=%d\n",
                 (void*)vaddr, (int)filesz, (int)memsz);
