@@ -2,6 +2,7 @@
 #include "idt.h"
 #include "../../kprintf.h"
 #include "../../sched/sched.h"
+#include "../../user/layout.h"
 
 struct __attribute__((packed)) idt_entry {
     uint16_t offset_low;
@@ -84,6 +85,8 @@ static void user_fault(struct interrupt_frame* frame) {
                 (e & 0x10) ? "instruction fetch at" : (e & 0x02) ? "write to" : "read from",
                 (void*)cr2,
                 (e & 0x01) ? "page protection violation" : "page not mapped");
+                if (cr2 >= USER_STACK_GUARD && cr2 < USER_STACK_BOTTOM)
+                    kprintf("[fault] that's the stack guard page: stack overflow\n");
     }
     kprintf("[fault] killing the task\n");
     task_kill((int)frame->int_no);

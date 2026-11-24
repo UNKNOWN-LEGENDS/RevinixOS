@@ -22,6 +22,7 @@
 #include "gui/desktop.h"
 #include "drivers/mouse.h"
 #include "arch/x86_64/fpu.h"
+#include "user/layout.h"
 
 void irq_install(void);
 
@@ -33,10 +34,6 @@ extern uint8_t user_program_end[];
 #define USER_ELF_LBA 2048           // sector where the Makefile writes hello.elf
 #define USER_ELF_SECTORS 16         // 8 KB, generous for the ~5 KB ELF.
                                     // Day-1 hardcode; a real filesystem reports the true size later.
-
-#define USER_CODE_VADDR 0x0000000100000000ull   //4GB (above the identity map)
-#define USER_STACK_VADDR 0x0000000200000000ull   //8GB
-
 // static void usermode_test(void) {
 //     // // user code page: an infinite loop written as raw machine code
 //     // uint64_t code_frame = pmm_alloc_frame();
@@ -125,10 +122,22 @@ struct task* spawn_user_process(const uint8_t* image, uint64_t size) {
         return NULL;
     }
 
-    uint64_t sframe = pmm_alloc_frame();
-    vmm_map_page_in(pml4, USER_STACK_VADDR, sframe, PAGE_WRITABLE | PAGE_USER | vmm_nx());
+    // The stack: USER_STACK_PAGES zeroed pages just below USER_STACK_TOP,
+    // read/write, never executable. The page under them stays unmapped as a
+    // guard, so running off the bottom faults instead of corrupting memory.
+    for (uint64_t a = USER_STACK_BOTTOM; a < USER_STACK_TOP; a += 4096) {
+        uint64_t f = pmm_alloc_frame();
+        if (!f) {
+            kprintf("spawn: out of memory for the stack\n");
+            vmm_destroy_address_space(pml4);
+            return NULL;
+        }
+        uint8_t* p = (uint8_t*)phys_to_virt(f);
+        for (int i = 0; i < 4096; i++) p[i] = 0;
+        vmm_map_page_in(pml4, a, f, PAGE_WRITABLE | PAGE_USER | vmm_nx());
+    }
 
-    return task_create_user(entry, pml4, USER_STACK_VADDR + 4096);
+    return task_create_user(entry, pml4, USER_STACK_TOP);
 }
 
 // Load a named program through the VFS into a heap buffer sized to the file.

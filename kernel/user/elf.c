@@ -3,18 +3,24 @@
 #include "../mm/vmm.h"
 #include "../kprintf.h"
 #include <stdint.h>
+#include "layout.h"
 
 #define PAGE_SIZE 4096
 #define ALIGN_DOWN(x, a) ((x) & ~((uint64_t)(a) - 1))
 #define ALIGN_UP(x, a)   (((x) + (a) - 1) & ~((uint64_t)(a) - 1))
 
 // Map a user page if not already mapped; return its HHDM-accessible pointer
-// so the kernel can write into it.
+// so the kernel can write into it, or NULL if we're out of memory.
+// New frames are zeroed: a recycled frame still holds whatever the previous
+// owner left in it, and that must never leak into another program.
 static uint8_t* ensure_user_page(uint64_t pml4, uint64_t vaddr) {
     uint64_t page = ALIGN_DOWN(vaddr, PAGE_SIZE);
     uint64_t phys = vmm_get_phys_in(pml4, page);
     if (!phys) {
         phys = pmm_alloc_frame();
+        if (!phys) return 0;
+        uint8_t* p = (uint8_t*)phys_to_virt(phys);
+        for (int i = 0; i < PAGE_SIZE; i++) p[i] = 0;
         vmm_map_page_in(pml4, page, phys, PAGE_WRITABLE | PAGE_USER);
     }
     // reach the physical frame through the HHDM to write into it
@@ -48,6 +54,17 @@ uint64_t elf_load(uint64_t pml4, const uint8_t* image, uint64_t image_size) {
         return 0;
     }
 
+    // The program-header table must lie inside the image we were given.
+    if (eh->e_phoff > image_size ||
+        (uint64_t)eh->e_phnum * sizeof(struct elf64_phdr) > image_size - eh->e_phoff) {
+        kprintf("ELF: program headers outside the file\n");
+        return 0;
+    }
+    if (eh->e_entry < USER_IMAGE_MIN || eh->e_entry >= USER_IMAGE_MAX) {
+        kprintf("ELF: entry point %p outside the user image area\n", (void*)eh->e_entry);
+        return 0;
+    }
+
     // walk program headers
     const struct elf64_phdr* ph =
         (const struct elf64_phdr*)(image + eh->e_phoff);
@@ -65,6 +82,21 @@ uint64_t elf_load(uint64_t pml4, const uint8_t* image, uint64_t image_size) {
         uint64_t memsz  = ph[i].p_memsz;
         uint64_t off    = ph[i].p_offset;
 
+        // Never trust the file: the bytes must be inside the image, and the
+        // segment must land in the image area of USER space. Without this a
+        // crafted ELF could map pages into the kernel half (shared by every
+        // process) or make us copy kernel memory into its pages.
+        if (filesz > memsz || off > image_size || filesz > image_size - off) {
+            kprintf("ELF: segment data outside the file - refused\n");
+            return 0;
+        }
+        if (vaddr < USER_IMAGE_MIN || memsz > USER_IMAGE_MAX ||
+            vaddr > USER_IMAGE_MAX - memsz) {
+            kprintf("ELF: segment %p (+%d bytes) outside the user image area - refused\n",
+                    (void*)vaddr, (int)memsz);
+            return 0;
+        }
+
         kprintf("ELF: loading segment vaddr=%p filesz=%d memsz=%d\n",
                 (void*)vaddr, (int)filesz, (int)memsz);
 
@@ -72,6 +104,7 @@ uint64_t elf_load(uint64_t pml4, const uint8_t* image, uint64_t image_size) {
         // mapping pages on demand. (Simple and correct; optimize later.)
         for (uint64_t b = 0; b < memsz; b++) {
             uint8_t* dst_page = ensure_user_page(pml4, vaddr + b);
+            if (!dst_page) { kprintf("ELF: out of memory\n"); return 0; }
             uint64_t page_off = (vaddr + b) & (PAGE_SIZE - 1);
             // bytes beyond filesz are zero (handles .bss)
             dst_page[page_off] = (b < filesz) ? image[off + b] : 0;

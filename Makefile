@@ -126,6 +126,15 @@ $(BUILD)/elf.o: kernel/user/elf.c
 	mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $< -o $@
 
+# Deliberately broken programs: linked at addresses the ELF loader must refuse.
+userland/lowelf.elf: userland/badelf.asm userland/sys.inc
+	nasm -f elf64 -i userland/ userland/badelf.asm -o userland/badelf.o
+	x86_64-elf-ld -Ttext=0x1000 -e _start userland/badelf.o -o $@
+
+userland/kernelf.elf: userland/badelf.asm userland/sys.inc userland/kernelf.ld
+	nasm -f elf64 -i userland/ userland/badelf.asm -o userland/badelf.o
+	x86_64-elf-ld -T userland/kernelf.ld userland/badelf.o -o $@
+
 userland/%.elf: userland/%.asm userland/sys.inc userland/user.ld
 	nasm -f elf64 -i userland/ $< -o userland/$*.o
 	x86_64-elf-ld -T userland/user.ld userland/$*.o -o $@
@@ -233,7 +242,8 @@ run: $(ISO) disk-load
 
 disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf \
           userland/faulttest.elf userland/nxtest.elf userland/wxtest.elf \
-		  userland/cattest.elf userland/echotest.elf
+		  userland/cattest.elf userland/echotest.elf userland/stacktest.elf \
+		  userland/lowelf.elf userland/kernelf.elf
 	qemu-img create -f raw disk.img 16M
 	mkfs.vfat -F 32 -n REVINIX disk.img
 	mcopy -i disk.img userland/hello.elf ::/HELLO.ELF
@@ -245,6 +255,9 @@ disk.img: userland/hello.elf userland/ptrtest.elf userland/ssetest.elf \
 	mcopy -i disk.img userland/wxtest.elf ::/WXTEST.ELF
 	mcopy -i disk.img userland/cattest.elf ::/CATTEST.ELF
 	mcopy -i disk.img userland/echotest.elf ::/ECHOTEST.ELF
+	mcopy -i disk.img userland/stacktest.elf ::/STACKTST.ELF
+	mcopy -i disk.img userland/lowelf.elf ::/LOWELF.ELF
+	mcopy -i disk.img userland/kernelf.elf ::/KERNELF.ELF
 
 myos.iso: $(ISO_DIR)/boot/kernel.bin disk.img
 	cp disk.img $(ISO_DIR)/boot/disk.img
